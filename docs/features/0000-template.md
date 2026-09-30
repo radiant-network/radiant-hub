@@ -2,7 +2,7 @@
 
 > Written by the developer before the first line of code. Approved by the assigned reviewer in fifteen minutes at most. May be generated with AI: the developer is accountable for it.
 >
-> Required for **Standard** and **Complex** stories. Optional for **Small** ones.
+> Required for **Standard** and **Complex** stories. Optional for **Small** ones. The story itself follows [`../stories/story-template.md`](../stories/story-template.md).
 
 ## Story
 
