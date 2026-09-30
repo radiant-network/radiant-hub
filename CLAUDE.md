@@ -30,6 +30,10 @@ See `docs/architecture/overview.md` for the diagram. The boundaries are written 
 
 Most cross-module bugs happen at these boundaries. When a change touches one, update the contract doc in the same piece of work.
 
+## Stories
+
+To write or create a Jira story (SJRA), use the `jira-story` skill. It follows `docs/stories/story-template.md`.
+
 ## Cross-module work
 
 For any feature that touches more than one module, use the `cross-module-feature` skill. The rules:
