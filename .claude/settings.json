@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make status)",
+      "Bash(./scripts/status.sh)",
+      "Bash(git -C * status*)",
+      "Bash(git -C * log*)",
+      "Bash(git -C * diff*)",
+      "Bash(git -C * branch*)",
+      "Bash(git -C * remote -v)",
+      "Bash(gh pr view*)",
+      "Bash(gh pr list*)"
+    ],
+    "deny": [
+      "Read(**/.env)",
+      "Read(**/.env.*)"
+    ]
+  }
+}

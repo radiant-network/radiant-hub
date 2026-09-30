@@ -1,0 +1,10 @@
+# Module repos: each is its own git repo, never tracked by the hub
+/etl
+/portal
+/mcp
+/infra/
+
+# Local-only
+.claude/settings.local.json
+.idea/
+.DS_Store
