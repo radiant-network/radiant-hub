@@ -31,7 +31,7 @@ flowchart LR
 
 ## Modules impacted
 
-| Module | Changelist |
+| Module | Impact |
 |---|---|
 | etl | • New DAG `import_tenant_gene_panel`, with three modes:<br>&nbsp;&nbsp;◦ normal load: one or more files. S3 → parse → validate → **one `PATCH` per file**;<br>&nbsp;&nbsp;◦ DR replay: an S3 prefix. One `PATCH` per tenant, split by size;<br>&nbsp;&nbsp;◦ delete: a list of `{tenant}/{code}`. Writes a `_deleted` marker to S3, then calls `DELETE`.<br>• New dependency: `radiant_python`, pinned to a commit. QA needs a runtime that has it (open question 10). |
 | portal (backend) | • Migration: tables `gene_panel` and `gene_panel_gene`, action `can_manage_gene_panel` (seed, `DefaultRoles`, backfill of the existing tenants).<br>• Ranger: a `materialized_view` select policy per tenant in `EnsureTenantRangerConfig`.<br>• StarRocks calls of the write path (`SearchGenes`, `REFRESH`) on the root pool.<br>• New endpoints: `PATCH /{tenant}/gene_panels`, `DELETE /{tenant}/gene_panels/{code}`, `GET /{tenant}/gene_panels`.<br>• Batched inserts, request body limit.<br>• Symbol report against `ensembl_gene` (reuses `GenesRepository.SearchGenes`): it fixes the case and reports unmatched symbols. It does not reject them, unless `strict=true`.<br>• New per-tenant MV `gene_panel_gene_mv`: create it, refresh it after each write.<br>• New SQON field `tenant_gene_panel` for germline and somatic SNV (one table + one field; no new query code).<br>• `with_dictionary=true` on the aggregate pads all tenant panel codes.<br>• Regenerate the Python and TS clients. |
@@ -536,7 +536,28 @@ Each decision refers to an option in the tables above.
 | • Tests (3.4.2), compose (3.5.17) and QA (4.0.11) run different StarRocks versions. | • Run the MV tests against 4.0.11 on QA before the merge. |
 | • The SYNC refresh is longer than the ALB idle timeout (QA uses the AWS default). | • Measure the `PATCH` time on QA.<br>• Not verified: whether Airflow calls the API through the ALB or the in-cluster service. |
 
-## Appendix C: Feasibility review (2026-10-01)
+## Appendix C: References
+
+- **Project files:** cited inline. Every path and line was checked on 2026-10-01 against `main` of each module, `qlin-qa-infra` and `radiant-portal-deployment` (see [Appendix D](#appendix-d-feasibility-review-2026-10-01)).
+- RFC 9110 §9.2.2, idempotent methods: <https://httpwg.org/specs/rfc9110.html#idempotent.methods>
+- RFC 5789 §2, PATCH: <https://www.rfc-editor.org/rfc/rfc5789.html>
+- StarRocks JDBC catalog: <https://docs.starrocks.io/docs/data_source/catalog/jdbc_catalog/>
+- StarRocks async MVs on external catalogs: <https://docs.starrocks.io/docs/using_starrocks/async_mv/use_cases/data_lake_query_acceleration_with_materialized_views/>
+- StarRocks CREATE MATERIALIZED VIEW: <https://docs.starrocks.io/docs/sql-reference/sql-statements/materialized_view/CREATE_MATERIALIZED_VIEW/>
+- StarRocks REFRESH MATERIALIZED VIEW: <https://docs.starrocks.io/docs/sql-reference/sql-statements/materialized_view/REFRESH_MATERIALIZED_VIEW/>
+- AWS ALB quotas: <https://docs.aws.amazon.com/elasticloadbalancing/latest/application/load-balancer-limits.html>
+- Amazon S3 versioning: <https://docs.aws.amazon.com/AmazonS3/latest/userguide/Versioning.html>
+- Amazon S3 ListObjectsV2: <https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjectsV2.html>
+- GORM batch insert: <https://gorm.io/docs/create.html>
+- uv git dependencies: <https://docs.astral.sh/uv/concepts/projects/dependencies/>
+- Airflow dynamic task mapping: <https://airflow.apache.org/docs/apache-airflow/stable/authoring-and-scheduling/dynamic-task-mapping.html>
+- Airflow XComs: <https://airflow.apache.org/docs/apache-airflow/stable/core-concepts/xcoms.html>
+- StarRocks Colocate Join: <https://docs.starrocks.io/docs/using_starrocks/Colocate_join/>
+- StarRocks 3.5 REFRESH MATERIALIZED VIEW: <https://docs.starrocks.io/docs/3.5/sql-reference/sql-statements/materialized_view/REFRESH_MATERIALIZED_VIEW/>
+- Ensembl 116, Homo sapiens annotation (19,878 coding genes): <https://jun2026.archive.ensembl.org/Homo_sapiens/Info/Annotation>
+- Bruford EA et al. Guidelines for human gene nomenclature. *Nat Genet* 52, 754–758 (2020). [doi:10.1038/s41588-020-0669-3](https://doi.org/10.1038/s41588-020-0669-3)
+
+## Appendix D: Feasibility review (2026-10-01)
 
 A read-only review checked each component against `main` of each module, `qlin-qa-infra`, `radiant-portal-deployment` and the official docs. The corrections are applied in the sections above.
 
@@ -593,24 +614,3 @@ A read-only review checked each component against `main` of each module, `qlin-q
 - IaC for the service account's portal role.
 
 **Other:** `docs/contracts/portal-api.md:12` is stale. `portal.py` also calls `/case_groups` and `/notify` (`portal.py:111-140`).
-
-## Appendix D: References
-
-- **Project files:** cited inline. Every path and line was checked on 2026-10-01 against `main` of each module.
-- RFC 9110 §9.2.2, idempotent methods: <https://httpwg.org/specs/rfc9110.html#idempotent.methods>
-- RFC 5789 §2, PATCH: <https://www.rfc-editor.org/rfc/rfc5789.html>
-- StarRocks JDBC catalog: <https://docs.starrocks.io/docs/data_source/catalog/jdbc_catalog/>
-- StarRocks async MVs on external catalogs: <https://docs.starrocks.io/docs/using_starrocks/async_mv/use_cases/data_lake_query_acceleration_with_materialized_views/>
-- StarRocks CREATE MATERIALIZED VIEW: <https://docs.starrocks.io/docs/sql-reference/sql-statements/materialized_view/CREATE_MATERIALIZED_VIEW/>
-- StarRocks REFRESH MATERIALIZED VIEW: <https://docs.starrocks.io/docs/sql-reference/sql-statements/materialized_view/REFRESH_MATERIALIZED_VIEW/>
-- AWS ALB quotas: <https://docs.aws.amazon.com/elasticloadbalancing/latest/application/load-balancer-limits.html>
-- Amazon S3 versioning: <https://docs.aws.amazon.com/AmazonS3/latest/userguide/Versioning.html>
-- Amazon S3 ListObjectsV2: <https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjectsV2.html>
-- GORM batch insert: <https://gorm.io/docs/create.html>
-- uv git dependencies: <https://docs.astral.sh/uv/concepts/projects/dependencies/>
-- Airflow dynamic task mapping: <https://airflow.apache.org/docs/apache-airflow/stable/authoring-and-scheduling/dynamic-task-mapping.html>
-- Airflow XComs: <https://airflow.apache.org/docs/apache-airflow/stable/core-concepts/xcoms.html>
-- StarRocks Colocate Join: <https://docs.starrocks.io/docs/using_starrocks/Colocate_join/>
-- StarRocks 3.5 REFRESH MATERIALIZED VIEW: <https://docs.starrocks.io/docs/3.5/sql-reference/sql-statements/materialized_view/REFRESH_MATERIALIZED_VIEW/>
-- Ensembl 116, Homo sapiens annotation (19,878 coding genes): <https://jun2026.archive.ensembl.org/Homo_sapiens/Info/Annotation>
-- Bruford EA et al. Guidelines for human gene nomenclature. *Nat Genet* 52, 754–758 (2020). [doi:10.1038/s41588-020-0669-3](https://doi.org/10.1038/s41588-020-0669-3)

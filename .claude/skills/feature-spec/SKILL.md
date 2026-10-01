@@ -46,7 +46,10 @@ Do not write code. Do not create branches. Do not edit `docs/contracts/*` until 
   - The decision log goes at the end of **Appendix A**, after the options.
   - Diagrams, the data model and the API go in the matching **Per-module plan** subsection.
 - Keep the template's intro sentence in **Contract changes**.
-- **Merge and rollout order** has two parts: numbered steps, then notes. The notes cover migrations, backfills, feature flags, and what breaks if the order is not respected.
+- **Merge and rollout order** has three parts:
+  1. a Mermaid `gantt` chart of the task dependencies (`after a b`). The bars show the order, not durations; hide the axis dates (`axisFormat " "`);
+  2. a steps table: `| Step | Module | Prerequisites | Content |`, bullets in the cells;
+  3. a notes table. The notes cover migrations, backfills, feature flags, and what breaks if the order is not respected.
 - Check the result:
 
   ```sh
@@ -61,7 +64,7 @@ Do not write code. Do not create branches. Do not edit `docs/contracts/*` until 
   - This applies to the structured content: decisions, modules impacted, contract changes, API routes, DAG params and tasks, tests, rollout notes, open questions, risks and options.
   - In a cell, write `• item<br>`, and `&nbsp;&nbsp;◦ sub-item<br>` for sub-items. Do not write prose in a cell.
   - Use the template's columns where it has a table, for example `| Module | Impact |` and `| Contract | Change | Writer | Readers |`.
-  - Keep as plain lists only: the numbered rollout steps, Linked PRs and References.
+  - Keep as plain lists only: Linked PRs and References. The rollout steps are a table (see section 3).
   - Check that every row of a table has the same number of columns. A `|` inside a cell breaks the table.
 - **Do not add a "facts" dump table.** Cite each fact inline, where the doc uses it.
 - Be concise. Use short sentences, active voice, and one idea per bullet (ASD-STE100 style).
