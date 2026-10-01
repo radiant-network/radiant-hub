@@ -34,7 +34,7 @@ flowchart LR
 | Module | Changelist |
 |---|---|
 | etl | • New DAG `import_tenant_gene_panel`, with three modes:<br>&nbsp;&nbsp;◦ normal load: one or more files. S3 → parse → validate → **one `PATCH` per file**;<br>&nbsp;&nbsp;◦ DR replay: an S3 prefix. One `PATCH` per tenant, split by size;<br>&nbsp;&nbsp;◦ delete: a list of `{tenant}/{code}`. Writes a `_deleted` marker to S3, then calls `DELETE`.<br>• New dependency: `radiant_python`, pinned to a commit. |
-| portal (backend) | • Migration: tables `gene_panel` and `gene_panel_gene`, action `can_manage_gene_panel`.<br>• New endpoints: `PATCH /{tenant}/gene_panels`, `DELETE /{tenant}/gene_panels/{code}`, `GET /{tenant}/gene_panels`.<br>• Batched inserts, set-based symbol check against `ensembl_gene`, request body limit.<br>• New per-tenant MV `gene_panel_gene_mv`: create it, refresh it after each write.<br>• New SQON field `tenant_gene_panel` for germline and somatic SNV (one table + one field; no new query code).<br>• `with_dictionary=true` on the aggregate pads all tenant panel codes.<br>• Regenerate the Python and TS clients. |
+| portal (backend) | • Migration: tables `gene_panel` and `gene_panel_gene`, action `can_manage_gene_panel`.<br>• New endpoints: `PATCH /{tenant}/gene_panels`, `DELETE /{tenant}/gene_panels/{code}`, `GET /{tenant}/gene_panels`.<br>• Batched inserts, request body limit.<br>• Symbol report against `ensembl_gene` (reuses `GenesRepository.SearchGenes`): it fixes the case and reports unmatched symbols. It does not reject them, unless `strict=true`.<br>• New per-tenant MV `gene_panel_gene_mv`: create it, refresh it after each write.<br>• New SQON field `tenant_gene_panel` for germline and somatic SNV (one table + one field; no new query code).<br>• `with_dictionary=true` on the aggregate pads all tenant panel codes.<br>• Regenerate the Python and TS clients. |
 | portal (frontend) | • New facet `tenant_gene_panel` in the germline and somatic configs.<br>• Label map `code → name`.<br>• en/fr labels. |
 | mcp | • Bump the client SHA.<br>• Update the prompt doc.<br>• Optional: a tool that lists the panels. |
 | infra | • S3 archive prefix, with versioning.<br>• IAM for the Airflow role on the archive prefix:<br>&nbsp;&nbsp;◦ `s3:ListBucket` and `s3:GetObject` (load, replay);<br>&nbsp;&nbsp;◦ `s3:PutObject` (delete marker).<br>• Grant `can_manage_gene_panel` to the existing ETL service account.<br>• StarRocks:<br>&nbsp;&nbsp;◦ Ranger read grants on the MVs for the portal users (proxy read);<br>&nbsp;&nbsp;◦ privileges for the backend service user to create and refresh the MVs. |
@@ -71,18 +71,19 @@ sequenceDiagram
   AF->>S3: read file, compute sha256
   AF->>AF: tenant from key · parse · validate · group by panel_code
   AF->>API: PATCH /{tenant}/gene_panels {panels: [N]} (radiant_python)
-  API->>SR: set query: distinct symbols ∉ ensembl_gene.name
-  alt unknown symbols
-    API-->>AF: 422 unknown_symbols (all panels of the file)
-    AF-->>O: task fails, lists symbols, nothing loaded
-  else valid
-    API->>PG: BEGIN · per panel: delete genes, batched insert, upsert panel · COMMIT
+  API->>SR: SearchGenes in chunks → fix case, list unmatched symbols
+  alt strict=true and unmatched symbols
+    API-->>AF: 422 unmatched_symbols, nothing written
+    AF-->>O: task fails, lists symbols
+  else default
+    API->>PG: BEGIN · per panel: delete genes, batched insert (all symbols), upsert panel · COMMIT
     API->>SR: REFRESH MATERIALIZED VIEW … FORCE WITH SYNC MODE
     alt refresh fails
       API-->>AF: 503 mv_refresh_failed
       AF->>API: retry (idempotent)
     else refreshed
-      API-->>AF: 200
+      API-->>AF: 200 + warnings.unmatched_symbols
+      AF-->>O: task log lists unmatched symbols
     end
   end
 ```
@@ -112,13 +113,14 @@ flowchart LR
 | `filepaths` | • A list of S3 objects, for a normal load. |
 | `prefix` | • An S3 prefix, for a DR replay.<br>• One tenant: `…/gene_panels/{tenant}/`. All tenants: `…/gene_panels/`. |
 | `delete` | • A list of `{tenant}/{code}`, to remove panels. |
+| `strict` (optional, with `filepaths` or `prefix`) | • Default `false`: unmatched symbols are loaded and reported as warnings.<br>• `true`: the API rejects a batch that has unmatched symbols (422). Use it when the operator wants a clean match before the load. |
 
 **DAG tasks:**
 
 | Task | Behaviour |
 |---|---|
 | `resolve_batches` | • Reads the tenant from the S3 key (`…/gene_panels/{tenant}/{ts}.tsv`). A key with another layout fails the run.<br>• Reads each file with `boto3` (`radiant/tasks/utils.py:71-90`) and computes the file `sha256`.<br>• Parses and validates each file. If one rule fails, the whole run fails before any API call:<br>&nbsp;&nbsp;◦ the header has the required columns;<br>&nbsp;&nbsp;◦ `panel_code` matches `^[A-Z0-9_-]{1,64}$`;<br>&nbsp;&nbsp;◦ `panel_name` is the same on every row of a code;<br>&nbsp;&nbsp;◦ `symbol` is not empty;<br>&nbsp;&nbsp;◦ no symbol appears twice in one panel;<br>&nbsp;&nbsp;◦ with `filepaths`, no code appears in two files of the same run.<br>• Groups the rows by `panel_code`. Each panel becomes `{code, name, genes, source_uri, source_sha256}`.<br>• With `filepaths`: **one batch per file**, with all the panels of that file. One call per file keeps the file atomic.<br>• With `prefix`:<br>&nbsp;&nbsp;◦ lists all files. For each code, keeps the panel from the **latest file that contains that code**, by S3 `LastModified`;<br>&nbsp;&nbsp;◦ skips a code when `_deleted/{code}` is newer than that file. So a panel that is loaded again after a delete comes back on replay;<br>&nbsp;&nbsp;◦ groups the kept panels by tenant. Splits a tenant into several batches above **100,000 genes** (about 5 MB of JSON). A replay does not need one transaction for the whole tenant;<br>&nbsp;&nbsp;◦ uses the boto3 paginator: [ListObjectsV2](https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjectsV2.html) returns `LastModified` for each object, and at most 1,000 keys per call.<br>• `_deleted/{code}` is a logical marker. It is not the [S3 delete marker](https://docs.aws.amazon.com/AmazonS3/latest/userguide/Versioning.html). |
-| `load_batch` | • Mapped with `.expand()` ([dynamic task mapping](https://airflow.apache.org/docs/apache-airflow/stable/authoring-and-scheduling/dynamic-task-mapping.html)): one task instance per batch. The ETL already uses this pattern (`radiant/dags/import_part.py:364-369`).<br>• Calls `PATCH /{tenant}/gene_panels` once.<br>• Airflow retries a 503 `mv_refresh_failed`. The retry is safe (see the API section). |
+| `load_batch` | • Mapped with `.expand()` ([dynamic task mapping](https://airflow.apache.org/docs/apache-airflow/stable/authoring-and-scheduling/dynamic-task-mapping.html)): one task instance per batch. The ETL already uses this pattern (`radiant/dags/import_part.py:364-369`).<br>• Calls `PATCH /{tenant}/gene_panels` once, with `strict` from the conf.<br>• Logs the `warnings.unmatched_symbols` of the response, grouped by panel code.<br>• Airflow retries a 503 `mv_refresh_failed`. The retry is safe (see the API section). |
 | `delete_panel` | • Mapped with `.expand()`: one task instance per panel.<br>• Step 1: writes `…/{tenant}/_deleted/{code}` to S3 (body: `{deleted_at, dag_run_id}`). S3 comes before the DB, the same as for a load.<br>• Step 2: calls `DELETE /{tenant}/gene_panels/{code}` with `radiant_python`.<br>• Treats 404 as success: the panel is already gone, for example after a retry.<br>• Does not delete the `.tsv` files. They stay in S3 for audit. |
 
 **Other etl changes:**
@@ -136,7 +138,7 @@ flowchart LR
 |---|---|
 | DAG unit tests (`tests/unit/dags/`) | • Param validation: exactly one of `filepaths`, `prefix` or `delete`.<br>• `resolve_batches`:<br>&nbsp;&nbsp;◦ one batch per file with `filepaths`;<br>&nbsp;&nbsp;◦ replay: latest file per code, skips a code whose marker is newer, keeps a code loaded again after a delete;<br>&nbsp;&nbsp;◦ replay: splits a tenant above 100,000 genes;<br>&nbsp;&nbsp;◦ rejects a bad key layout.<br>• `load_batch`: retries on 503.<br>• `delete_panel`: marker written before the API call, 404 treated as success. |
 | Parser | • Header, CRLF, empty lines.<br>• Bad `panel_code`.<br>• `panel_name` that differs within one code.<br>• Duplicate symbol in a panel.<br>• The same code in two files of one run. |
-| Client | • Client call mocked.<br>• `tests/unit/nextflow/test_portal.py` still passes. |
+| Client | • Client call mocked.<br>• Warnings are logged. `strict=true` is passed through.<br>• `tests/unit/nextflow/test_portal.py` still passes. |
 
 ### portal
 
@@ -164,7 +166,7 @@ erDiagram
   }
   gene_panel_gene {
     int gene_panel_id FK
-    text symbol "PK(gene_panel_id, symbol)"
+    text symbol "PK(gene_panel_id, symbol); as in the file, case fixed when it matches ensembl_gene"
     text ensembl_id "nullable (D3)"
   }
 ```
@@ -173,9 +175,9 @@ erDiagram
 
 | Route | Action | Behaviour | Result |
 |---|---|---|---|
-| `PATCH /{tenant}/gene_panels` | • New `can_manage_gene_panel` (tenant scope) | • Body: `{panels: [{code, name, genes: [{symbol, ensembl_id?}], source_uri, source_sha256}]}`.<br>• Replaces each listed panel by `code`. The panels that are not in the body do not change (E1).<br>• All panels of the request are written in **one transaction**.<br>• Idempotent by design. PATCH is "neither safe nor idempotent" in general, but "can be issued in such a way as to be idempotent" ([RFC 5789 §2](https://www.rfc-editor.org/rfc/rfc5789.html)). Replace-by-code makes the same body give the same state, so retries and replays are safe.<br>• Same pattern as `PATCH /{tenant}/cases/batch`. That one is async, through the worker. This one is sync, because the work takes seconds. | • 200.<br>• 400: a `code` does not match `^[A-Z0-9_-]{1,64}$`.<br>• 413: the body is too large.<br>• 422 `{unknown_symbols: {<code>: […]}}`. No panel is written.<br>• 503 `mv_refresh_failed`. Postgres is committed, the MV is stale. A retry is safe. |
+| `PATCH /{tenant}/gene_panels` | • New `can_manage_gene_panel` (tenant scope) | • Body: `{panels: [{code, name, genes: [{symbol, ensembl_id?}], source_uri, source_sha256}]}`.<br>• Query param: `strict` (default `false`).<br>• Replaces each listed panel by `code`. The panels that are not in the body do not change (E1).<br>• All panels of the request are written in **one transaction**.<br>• Idempotent by design. PATCH is "neither safe nor idempotent" in general, but "can be issued in such a way as to be idempotent" ([RFC 5789 §2](https://www.rfc-editor.org/rfc/rfc5789.html)). Replace-by-code makes the same body give the same state, so retries and replays are safe.<br>• Same pattern as `PATCH /{tenant}/cases/batch`. That one is async, through the worker. This one is sync, because the work takes seconds. | • 200.<br>• 400: a `code` does not match `^[A-Z0-9_-]{1,64}$`.<br>• 413: the body is too large.<br>• 200 always lists `warnings: {unmatched_symbols: {<code>: […]}}`. All symbols are stored.<br>• 422 `{unmatched_symbols: {<code>: […]}}` only with `?strict=true`. No panel is written.<br>• 503 `mv_refresh_failed`. Postgres is committed, the MV is stale. A retry is safe. |
 | `DELETE /{tenant}/gene_panels/{code}` | • `can_manage_gene_panel` | • Deletes the panel, then refreshes the MV.<br>• Idempotent ([RFC 9110 §9.2.2](https://httpwg.org/specs/rfc9110.html#idempotent.methods)). | • 204.<br>• 404: the panel does not exist.<br>• 503 `mv_refresh_failed`. |
-| `GET /{tenant}/gene_panels` | • `can_search_case` | • Reads from Postgres. | • `[{code, name, gene_count, loaded_at}]` |
+| `GET /{tenant}/gene_panels` | • `can_search_case` | • Reads the list from Postgres.<br>• Computes `matched_count` **at read time** in StarRocks: `SELECT mv.code, count(DISTINCT mv.symbol) AS gene_count, count(DISTINCT eg.name) AS matched_count FROM {tenant}_tenant.gene_panel_gene_mv mv LEFT JOIN radiant.ensembl_gene eg ON eg.name = mv.symbol GROUP BY mv.code`. `DISTINCT` is needed because `ensembl_gene` has one row per gene and chromosome (`DUPLICATE KEY(gene_id, chromosome)`).<br>• So the count follows each Ensembl update. No recheck job is needed. | • `[{code, name, gene_count, matched_count, loaded_at}]` |
 | Germline/somatic SNV `list`, `count`, `aggregate` | • `can_search_case` (no change) | • New SQON field `tenant_gene_panel`. | • No change. |
 
 | Item | Change |
@@ -190,7 +192,7 @@ erDiagram
 | Size | • A panel can hold up to about 20,000 genes: Ensembl 116 counts 19,878 coding genes for GRCh38 ([Ensembl 116](https://jun2026.archive.ensembl.org/Homo_sapiens/Info/Annotation)).<br>• One gene is about 50 bytes of JSON. A 5,000-gene panel is about 250 KB. A 20,000-gene panel is about 1 MB. |
 | HTTP | • The QA ALB quotas limit only the headers (64 KB for the request header), not the body ([ALB quotas](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/load-balancer-limits.html)). The QA ALB is in `qlin-qa-infra/terraform/kubernetes_config/ingress_class.tf`.<br>• The backend has no server-side body limit today. Add `http.MaxBytesReader` on this route (for example 50 MB), and return 413 above it.<br>• Prod infra is not verified. |
 | Inserts | • Use GORM `CreateInBatches`, for example 1,000 rows per statement ([GORM batch insert](https://gorm.io/docs/create.html)).<br>• Do not insert one row at a time. |
-| Symbol check | • One set query per chunk: `SELECT name FROM ensembl_gene WHERE name IN (…)`, with the distinct symbols of the request, in chunks of 1,000.<br>• Return all unknown symbols of the request, grouped by code. |
+| Symbol report | • **Principle:** store the panel as the clinician defines it. Report what does not match today; do not reject it.<br>• **Why not reject:**<br>&nbsp;&nbsp;◦ `ensembl_gene` is a snapshot of one Ensembl release. A rejection would tie a valid panel to the release that the ETL loaded. A gene that is newer, or renamed in a later release, would be refused now and valid after the next import;<br>&nbsp;&nbsp;◦ a panel must never depend on the variants that exist at load time. The consequence set grows with each case, and a gene with no variant today can have variants tomorrow. The check uses only `ensembl_gene`, never the consequence tables.<br>• **Reference:** `ensembl_gene` (shared StarRocks DB, loaded by the ETL open data import). The symbol is in `name`; `gene_id` is the ENSG ID; `alias` can be null (`etl/radiant/dags/sql/open_data/init/ensembl_gene_create_table.sql`, `etl/radiant/data_qa/sources/ensembl_gene.yml:21-27`).<br>• **Reuse:** `GenesRepository.SearchGenes` already does this set query for the "upload a gene list" facet (`portal/backend/internal/repository/starrocks/genes.go:89-110`, route `POST /{tenant}/genes/search` at `cmd/api/main.go:181`):<br>&nbsp;&nbsp;◦ `SELECT gene_id, name FROM ensembl_gene WHERE UPPER(name) IN (…) OR UPPER(gene_id) IN (…)`;<br>&nbsp;&nbsp;◦ case-insensitive, and it also accepts ENSG IDs.<br>• **Steps in `PATCH`:**<br>&nbsp;&nbsp;◦ collect the distinct symbols of all panels in the request (trim spaces);<br>&nbsp;&nbsp;◦ call `SearchGenes` in chunks of 1,000 symbols: one query per chunk, not one per gene. A 20,000-symbol file is 20 queries on a small table;<br>&nbsp;&nbsp;◦ for a matched symbol, store the canonical `name` (for example `c1orf112` → `C1orf112`), so the join is exact;<br>&nbsp;&nbsp;◦ for an unmatched symbol, store it as in the file, and list it in `warnings.unmatched_symbols`;<br>&nbsp;&nbsp;◦ with `ensembl_id` in the file (D3), report a row whose ID maps to another `name`.<br>• **Visibility:** `GET /gene_panels` returns `gene_count` and `matched_count`. The frontend shows the gap next to the panel name.<br>• **Hard errors stay** only for invalid files: bad `panel_code`, empty symbol, duplicate symbol in a panel, bad layout (DAG checks).<br>• **Not done (F3):** no alias resolution. A previous HGNC symbol stays unmatched until the file is corrected.<br>• **Version:** matching uses the Ensembl release that the ETL loaded. If VEP annotated the variants with another release, some symbols can differ. Keep both releases aligned. |
 
 **Read path, B4: async materialized view:**
 
@@ -339,14 +341,14 @@ sequenceDiagram
 |---|---|
 | Clients | • `make doc` in `backend/`.<br>• `make generate-client-python` and `make generate-client-typescript` in `portal/`. |
 | Frontend facet | • Add `{ key: 'tenant_gene_panel', translation_key: 'tenant_gene_panel', type: FilterTypes.MULTIPLE }` under `gene_divider`:<br>&nbsp;&nbsp;◦ `portals/radiant/config/radiant.ts:52-58` (somatic);<br>&nbsp;&nbsp;◦ `portals/radiant/config/radiant.ts:375-381` (germline).<br>• Add en/fr labels and a tooltip in `translations/common/{en,fr}.json`.<br>• The values come from `GET /gene_panels` (C2). |
-| Frontend labels | • The facet shows `name` and sends `code`.<br>• Today a `MULTIPLE` facet labels a value from `common.facets.values.<key>.<value>`, and falls back to the raw key (`components/base/query-builder/facets/multiselect-facet.tsx:114-119`).<br>• Panel names are data, not translations. So the facet needs a label map `code → name` from `GET /gene_panels`. This is a small change to the facet component. |
+| Frontend labels | • The facet shows `name` and sends `code`.<br>• Today a `MULTIPLE` facet labels a value from `common.facets.values.<key>.<value>`, and falls back to the raw key (`components/base/query-builder/facets/multiselect-facet.tsx:114-119`).<br>• Panel names are data, not translations. So the facet needs a label map `code → name` from `GET /gene_panels`. This is a small change to the facet component.<br>• Show `matched_count / gene_count` in the facet tooltip when they differ, for example "EPILEPSY_V2 (812 / 815 genes matched)". |
 
 **portal tests:**
 
 | Scope | Tests |
 |---|---|
 | Postgres repository | • Tenant isolation.<br>• One transaction per request: a failure on panel N writes no panel. |
-| Handlers | • 200, 400, 413, 403, 503.<br>• 422: all unknown symbols, grouped by code. |
+| Handlers | • 200, 400, 413, 403, 503.<br>• 200 with `warnings.unmatched_symbols`, grouped by code; unmatched symbols are stored.<br>• 422 only with `strict=true`; nothing is written.<br>• Case fix: `c1orf112` is stored as `C1orf112`.<br>• `GET /gene_panels`: `matched_count` changes when `ensembl_gene` changes, without a reload. |
 | Authorization | • Action-enforcement test. |
 | StarRocks | • The MV DDL renders per tenant.<br>• Filter and aggregate on `tenant_gene_panel`, with a fixture (MV table + TSV in `test/data/`, as for `gene_panels_test.go`):<br>&nbsp;&nbsp;◦ `in` with one and with several codes;<br>&nbsp;&nbsp;◦ combined with `omim_gene_panel` in `and` / `or`;<br>&nbsp;&nbsp;◦ `not-in`, including a locus in no panel;<br>&nbsp;&nbsp;◦ a locus with two genes in one panel is counted once in the aggregate;<br>&nbsp;&nbsp;◦ an unknown code returns 0 rows, not an error.<br>• `with_dictionary=true` pads all tenant codes with count 0.<br>• Somatic SNV: same cases on one fixture. |
 
@@ -390,14 +392,13 @@ sequenceDiagram
 |---|---|---|---|
 | 1 | C | • List all panels, or only the panels with hits? | • C2: all panels |
 | 2 | D | • Is there a sample file?<br>• Do the clinicians already use stable panel codes, or must the operator assign them? | — |
-| 3 | F | • Reject unknown symbols, warn, or resolve aliases? | • F1: reject |
-| 4 | G | • Germline only, or germline + somatic? | • G2: both |
-| 5 | S3 | • Which bucket and prefix?<br>• Object lock? Retention? | — |
-| 6 | Backup | • What is the Postgres backup policy?<br>• Is S3 replay a second DR path, or the only one? | — |
-| 7 | StarRocks | • Which version is deployed in QA and prod?<br>• Does it support async MVs on JDBC? | — |
-| 8 | Ownership | • Who maintains the panels, and how often?<br>• What is the facet label (en/fr)? | — |
-| 9 | `not-in` | • `not-in` on a panel also drops the loci that are in no panel (SQL `NULL` logic). Allow it, change it, or hide it for this facet? | • Hide `not-in` for this facet |
-| 10 | Follow-up | • Ticket number for the migration of `portal.py` to `radiant_python`. | — |
+| 3 | G | • Germline only, or germline + somatic? | • G2: both |
+| 4 | S3 | • Which bucket and prefix?<br>• Object lock? Retention? | — |
+| 5 | Backup | • What is the Postgres backup policy?<br>• Is S3 replay a second DR path, or the only one? | — |
+| 6 | StarRocks | • Which version is deployed in QA and prod?<br>• Does it support async MVs on JDBC? | • A code comment names StarRocks 3.5.18 (`portal/backend/internal/repository/starrocks/genes.go:53`). Confirm it per environment. |
+| 7 | Ownership | • Who maintains the panels, and how often?<br>• What is the facet label (en/fr)? | — |
+| 8 | `not-in` | • `not-in` on a panel also drops the loci that are in no panel (SQL `NULL` logic). Allow it, change it, or hide it for this facet? | • Hide `not-in` for this facet |
+| 9 | Follow-up | • Ticket number for the migration of `portal.py` to `radiant_python`. | — |
 
 ## Linked PRs
 
@@ -429,7 +430,7 @@ sequenceDiagram
 | H. Airflow → portal client | H1: extend the hand-written client | • Add a gene panel call to `portal.py`. Nothing new to install.<br>• Risk: the API is copied by hand. Drift is found only at run time. |
 | | **H2: generated `radiant_python`** ✅ | • Generated client + `fetch_token` adapter.<br>• Git pin. The MWAA build needs git and GitHub access.<br>• Typed. Drift is visible at each client bump.<br>• Risk: not on an index. Each API change needs a regenerate and a SHA bump. |
 | W. Write granularity | W1: one `PUT /{tenant}/gene_panels/{code}` per panel | • Each panel loads alone.<br>• Risk: a file can load partly. |
-| | **W2: one `PATCH /{tenant}/gene_panels` per file** ✅ | • The file loads completely or not at all, in one transaction.<br>• One 422 lists all unknown symbols of the file.<br>• Cost: one bad panel blocks the file. The body is larger (a few MB). |
+| | **W2: one `PATCH /{tenant}/gene_panels` per file** ✅ | • The file loads completely or not at all, in one transaction.<br>• One response lists all unmatched symbols of the file.<br>• Cost: one bad panel blocks the file. The body is larger (a few MB). |
 | B. Filter mechanics | B1: federated tenant view in `GenePanelsTables` | • Same behaviour as HPO/OMIM (any consequence symbol).<br>• Each query reads Postgres through JDBC. The [JDBC catalog](https://docs.starrocks.io/docs/data_source/catalog/jdbc_catalog/) doc does not describe predicate pushdown, so the cost is not known.<br>• Fallback if the MV is not possible. |
 | | B2: resolve to `symbol IN (…)` | • Same behaviour (`cf.symbol`, `internal/types/consequence.go:105-111`).<br>• No federation, but up to 20,000 literals in each query. The aggregate needs a separate path. |
 | | B3: join on `snv__variant.symbol` | • **Different** behaviour (picked consequence only).<br>• Not recommended. |
@@ -442,8 +443,8 @@ sequenceDiagram
 | E. Updates | **E1: replace by code** ✅ | • Only the panels of the file change. |
 | | E2: full replace per tenant | • The operator must always send all panels. |
 | | E3: versions | • [S3 versioning](https://docs.aws.amazon.com/AmazonS3/latest/userguide/Versioning.html) gives part of E3. |
-| F. Symbol check | F1: reject | • Proposed. |
-| | F2: warn | • Risk: a clinician trusts a panel that has missing genes. |
+| F. Symbol check | F1: reject | • Ties a valid panel to the loaded Ensembl release. Still available with `strict=true`. |
+| | **F2: store all, warn, show the match count** ✅ | • The panel stays as the clinician defined it.<br>• Risk: a clinician trusts a panel that has unmatched genes. Mitigation: `matched_count` shown in the facet, warnings in the DAG log. |
 | | F3: resolve aliases | • `ensembl_gene.alias` can be null. |
 | | F4: dbt test after the load | • Can be added to F1–F3. |
 | G. Pages | G1: germline SNV | — |
@@ -462,6 +463,7 @@ Each decision refers to an option in the tables above.
 | 2026-10-01 | Panel code | • `code` is the stable ID of a panel in a tenant (`gene_panel.code`). It comes from the `panel_code` column.<br>• Format: `^[A-Z0-9_-]{1,64}$`. It is safe in a URL path and in an S3 key. The DAG and the API reject other values.<br>• The SQON filters on `code`. The facet shows `name`. A rename does not break the saved filters. |
 | 2026-10-01 | **W2**: one API call per file | • `PATCH /{tenant}/gene_panels` loads all the panels of a file in one Postgres transaction. The file loads completely, or not at all.<br>• Inserts are batched. The symbol check runs as a set query, not one query per gene. |
 | 2026-10-01 | Read path **B4**: StarRocks async MV | • One MV per tenant, `{tenant}_tenant.gene_panel_gene_mv`, built from Postgres through `radiant_jdbc`.<br>• The API refreshes it after each write. A scheduled refresh is the safety net.<br>• The filter joins a native StarRocks table. No JDBC read happens per query. |
+| 2026-10-01 | **F2**: store all symbols, warn, show the match count | • The API stores every symbol of the file. It fixes the case of matched symbols and reports the unmatched ones as warnings.<br>• It does not reject a panel because of `ensembl_gene`, unless `strict=true`.<br>• `matched_count` is computed at read time, so it follows each Ensembl update. |
 
 ## Appendix B: Risks
 
@@ -474,7 +476,8 @@ Each decision refers to an option in the tables above.
 | • PG and S3 diverge. | • S3 is written before the API call.<br>• `source_sha256` check.<br>• Deletion marker. |
 | • Two portal clients in the ETL until the follow-up ticket. | • Shared `fetch_token`.<br>• Follow-up ticket. |
 | • The ETL service account gets a 403. | • Grant `can_manage_gene_panel` per tenant in the rollout. |
-| • HGNC renames: an old panel loses some genes. | • F1 at load.<br>• D3.<br>• Re-check after each Ensembl update. |
+| • HGNC renames: an old panel loses some genes. | • `matched_count` is computed at read time, so the gap is visible.<br>• D3 (Ensembl ID) to detect renames.<br>• The operator corrects the file and loads it again. |
+| • A clinician does not see that some genes of a panel are unmatched. | • `matched_count / gene_count` in the facet tooltip.<br>• Warnings in the DAG log for the operator.<br>• `strict=true` when a clean match is required. |
 | • Users confuse it with the prescription `panel`. | • Separate tables.<br>• UI label "Tenant gene panels". |
 
 ## Appendix C: References
