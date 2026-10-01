@@ -15,8 +15,8 @@
 
 | Fields | Endpoints | Source | Since |
 |---|---|---|---|
-| `cmc_sample_mutated`, `cmc_sample_ratio`, `cmc_tier`, `cmc_mutation_url` (nullable; filterable and sortable except `cmc_mutation_url`) | germline and somatic SNV occurrence list, count, aggregation, statistics | `snv__variant.cmc_*`, denormalised by the ETL from COSMIC (see `starrocks-schema.md`) | SJRA-1990 |
-| `reference`, `alternate` | somatic SNV occurrence list | `snv__variant` | SJRA-1990 |
+| `cmc_sample_mutated`, `cmc_sample_ratio`, `cmc_tier`, `cmc_mutation_url` (nullable; filterable and sortable except `cmc_mutation_url`) | germline and somatic SNV occurrence list, count, aggregation, statistics | `snv__variant.cmc_*`, denormalised by the ETL from COSMIC (see `starrocks-schema.md`) | RAD-15 |
+| `reference`, `alternate` | somatic SNV occurrence list | `snv__variant` | RAD-15 |
 
 ## Known coupling
 

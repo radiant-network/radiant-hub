@@ -1,4 +1,4 @@
-# SJRA-xxxx: Title
+# RAD-xxxx: Title
 
 > Written by the developer before the first line of code. Approved by the assigned reviewer in fifteen minutes at most. May be generated with AI: the developer is accountable for it.
 >
@@ -9,7 +9,7 @@
 - **Link:** **[ticket]**
 - **Assigned reviewer:** **[Name]**
 - **Status:** Draft | In review | Approved | In progress | Done
-- **Branch (all repos):** `feat/sjra-xxxx-<slug>`
+- **Branch (all repos):** `feat/rad-xxxx-<slug>`
 
 ## Chosen approach
 

@@ -1,11 +1,11 @@
-# SJRA-1990: Filter and display COSMIC CMC fields in the SNV variants page
+# RAD-15: Filter and display COSMIC CMC fields in the SNV variants page
 
 ## Story
 
-- **Link:** [SJRA-1990](https://d3b.atlassian.net/browse/SJRA-1990)
-- **Assigned reviewer:** **To be decided at grooming**
-- **Status:** Draft
-- **Branch (all repos):** `feat/sjra-1990-cosmic-cmc-snv`
+- **Link:** [RAD-15](https://ferlab-crsj.atlassian.net/browse/RAD-15) (previously SJRA-1990 on d3b)
+- **Assigned reviewer:** Karl Ritchie
+- **Status:** Approved
+- **Branch (all repos):** `feat/rad-15-cosmic-cmc-snv`
 
 ## Chosen approach
 
@@ -23,7 +23,7 @@
 
 | Module | Area | Kind of change |
 |---|---|---|
-| etl | `radiant/dags/sql/radiant/init/snv_{staging_variant,variant,variant_partitioned}_create_table.sql`, `snv_staging_variant_insert.sql`, `snv_staging_variant_reannotate.sql`, `snv_variant_insert.sql`, new migration `migrations/SJRA-1990_snv_variant_add_cmc.sql`, `radiant/data_qa/macros/dictionaries.sql` + QA tests, `docs/import_cosmic_mutation_set.md` | new / modified |
+| etl | `radiant/dags/sql/radiant/init/snv_{staging_variant,variant,variant_partitioned}_create_table.sql`, `snv_staging_variant_insert.sql`, `snv_staging_variant_reannotate.sql`, `snv_variant_insert.sql`, new migration `migrations/RAD-15_snv_variant_add_cmc.sql`, `radiant/data_qa/macros/dictionaries.sql` + QA tests, `docs/import_cosmic_mutation_set.md` | new / modified |
 | portal (backend) | `internal/types/variant.go`, `germline_snv_occurrence.go`, `somatic_snv_occurrence.go`, `internal/repository/starrocks/facets.go`, `docs/swagger.yaml`, generated clients `frontend/api/` and `cli/python/` | modified |
 | portal (frontend) | `portals/radiant/config/radiant.ts` (germline and somatic SNV aggregations), `apps/case/src/entity/variants/{germline,somatic}-occurrence/table/*-table-settings.tsx`, new cells (CMC Tier, COSMIC link), `translations/common/{en,fr}.json` | new / modified |
 | mcp | none (new columns are visible to its SQL, the Python client is regenerated but its pinned SHA is not bumped) | — |
@@ -45,7 +45,7 @@ No specific UX task: the colours are set by the story (1 red, 2 orange, 3 yellow
 
 | Contract | Change | Writer | Readers | Migration / compatibility |
 |---|---|---|---|---|
-| StarRocks `snv__staging_variant` (shared DB), `snv__variant`, `snv__variant_partitioned` (per tenant) | 4 new nullable columns appended at the end: `cmc_mutation_url VARCHAR(255)`, `cmc_sample_mutated INT`, `cmc_sample_ratio DOUBLE`, `cmc_tier VARCHAR(8)` | etl | portal backend (new), mcp (arbitrary SQL) | Manual migration `SJRA-1990_snv_variant_add_cmc.sql` (`ALTER TABLE … ADD COLUMN`, not re-runnable). Existing rows stay `NULL` until the forced re-annotation (task 2) |
+| StarRocks `snv__staging_variant` (shared DB), `snv__variant`, `snv__variant_partitioned` (per tenant) | 4 new nullable columns appended at the end: `cmc_mutation_url VARCHAR(255)`, `cmc_sample_mutated INT`, `cmc_sample_ratio DOUBLE`, `cmc_tier VARCHAR(8)` | etl | portal backend (new), mcp (arbitrary SQL) | Manual migration `RAD-15_snv_variant_add_cmc.sql` (`ALTER TABLE … ADD COLUMN`, not re-runnable). Existing rows stay `NULL` until the forced re-annotation (task 2) |
 | StarRocks `cosmic_mutation_set`, `cosmic_mutation_set_hgvs` (shared DB) | New reader: the variant staging insert and re-annotate statements. No DDL change | etl (`import_cosmic_mutation_set`) | etl (variant staging) | Renaming their columns now breaks the variant load |
 | Enum `cmc_tier` | New dictionary `'1'`, `'2'`, `'3'`, `'Other'` in the three synced copies | etl (upstream COSMIC) | portal backend (`facets.go`), frontend translations | New dictionary, no existing data affected |
 | API: germline and somatic SNV occurrence list, count, aggregation, statistics | New optional response fields `cmc_sample_mutated` (int), `cmc_sample_ratio` (float), `cmc_tier` (string), `cmc_mutation_url` (string), all nullable; same aliases accepted in filters and sort (`cmc_mutation_url` not filterable). Somatic list also returns `reference` and `alternate` | portal backend | portal frontend (TS client), mcp (Python client, not bumped) | Additive, no versioning needed |
@@ -69,11 +69,7 @@ No feature flag. Each COSMIC refresh later requires a forced `reannotate_open_da
 
 ## Risks and coverage
 
-| Risk (from the story) | How it is covered |
-|---|---|
-| Genomic formats or data: Franklin link from chrom/pos/ref/alt in hg38; COSMIC matched by locus or by HGVS | The URL format is pinned by a unit test on the story's example (`chr22-19524402-G-A-hg38`). Indels are checked manually against Franklin. The HGVS fallback matches only the picked transcript, without its version; the ETL fixtures pin that match and the "locus wins" rule. |
-| Clinical rules or interpretation: Tier colour | Colours fixed by the story, pinned by a unit test. Labels validated by the clinical team (task 4). |
-| Interoperability: links to Franklin and COSMIC | COSMIC uses `cmc_mutation_url` as-is. The Franklin format is isolated in one function. Both open in a new tab with `rel="noopener noreferrer"`. |
+The story checks no particular business risk. The tests above still pin the Franklin URL format (story example `chr22-19524402-G-A-hg38`), the Tier colours and the HGVS fallback rule ("locus wins", picked transcript only), since a regression there would show a wrong link or a wrong value.
 
 ## Frozen scope
 
@@ -95,11 +91,11 @@ No feature flag. Each COSMIC refresh later requires a forced `reannotate_open_da
 
 | | |
 |---|---|
-| Reviewer | **To be decided at grooming** |
-| Date | … |
-| Plan review duration | … min |
-| Decision | Approved / Approved with adjustments / Rework needed |
-| Comments | … |
+| Reviewer | Karl Ritchie |
+| Date | 2026-10-01 |
+| Plan review duration | 15 min |
+| Decision | Approved  |
+| Comments | None |
 
 ## Deviation log
 
