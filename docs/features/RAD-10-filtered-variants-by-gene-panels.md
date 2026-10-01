@@ -448,12 +448,6 @@ gantt
 | 12 | Flags | • Is `TENANT_VIEWS_READ_ENABLED` on in D3b? | — |
 | 13 | Roles | • Which roles get `can_manage_gene_panel`?<br>• QA uses Postgres roles; D3b uses Keycloak realm roles (`radiant-portal-deployment/deployment/terraform/keycloak-config/roles.tf:14-17`). No IaC was found for the service account role. | — |
 
-## Linked PRs
-
-- etl:
-- portal:
-- mcp:
-
 ---
 
 ## Appendix A: Options considered
