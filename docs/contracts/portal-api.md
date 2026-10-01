@@ -11,6 +11,13 @@
 | MCP | Generated `radiant_python` client (`portal/cli/python/`), caller's JWT as Bearer | `make generate-client-python` in `portal/`, then bump it in `mcp/` |
 | ETL | Hand-written client in `etl/radiant/tasks/nextflow/portal.py`: `PATCH /{tenant}/cases/batch` and a poll on the batch | Manual. Check `etl/radiant/tasks/nextflow/batch.py` builds a body the API still accepts |
 
+## Occurrence fields backed by open-data tables
+
+| Fields | Endpoints | Source | Since |
+|---|---|---|---|
+| `cmc_sample_mutated`, `cmc_sample_ratio`, `cmc_tier`, `cmc_mutation_url` (nullable; filterable and sortable except `cmc_mutation_url`) | germline and somatic SNV occurrence list, count, aggregation, statistics | `snv__variant.cmc_*`, denormalised by the ETL from COSMIC (see `starrocks-schema.md`) | RAD-15 |
+| `reference`, `alternate` | somatic SNV occurrence list | `snv__variant` | RAD-15 |
+
 ## Known coupling
 
 - The MCP hard-codes the case search filter and sort aliases (`CASE_SEARCH_FILTER_FIELDS` / `CASE_SEARCH_SORT_FIELDS`), which mirror `CanBeFiltered` / `CanBeSorted` in the backend's `CasesFields`.

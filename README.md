@@ -32,11 +32,11 @@ Bootstrap is idempotent. Re-run it at any time to add a repo you skipped (e.g. a
 
 Example: *"Add COSMIC information on variant"* touches the ETL and the portal.
 
-1. **Analyse in the hub.** Copy `docs/features/0000-template.md` to `docs/features/SJRA-xxxx-cosmic-on-variant.md`. Fill in the modules impacted and the contract changes, and update `docs/contracts/`. Open a hub PR for review.
+1. **Analyse in the hub.** Copy `docs/features/0000-template.md` to `docs/features/RAD-xxxx-cosmic-on-variant.md`. Fill in the modules impacted and the contract changes, and update `docs/contracts/`. Open a hub PR for review.
 2. **Implement in each module**, using the same branch name everywhere:
    ```sh
-   git -C etl    switch -c feat/sjra-xxxx-cosmic-on-variant
-   git -C portal switch -c feat/sjra-xxxx-cosmic-on-variant
+   git -C etl    switch -c feat/rad-xxxx-cosmic-on-variant
+   git -C portal switch -c feat/rad-xxxx-cosmic-on-variant
    ```
 3. **Deliver one PR per repo**, run from inside the module (`cd etl && gh pr create`), each linking to the spec. Merge in dependency order: ETL/schema first, then the portal.
 

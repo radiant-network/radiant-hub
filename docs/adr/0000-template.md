@@ -3,7 +3,7 @@
 - **Status:** Proposed | Accepted | Superseded by NNNN
 - **Date:** YYYY-MM-DD
 - **Modules:** etl, portal, mcp, infra
-- **Ticket:** SJRA-xxxx
+- **Ticket:** RAD-xxxx
 
 ## Context
 

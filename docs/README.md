@@ -8,6 +8,6 @@ Cross-module documentation. If a doc concerns one module only, keep it in that m
 | [`contracts/`](contracts/) | The interfaces between modules: who writes, who reads, what must stay in sync. **Update these whenever a boundary changes.** |
 | [`adr/`](adr/) | Architecture decisions that affect more than one module. |
 | [`stories/`](stories/story-template.md) | The Jira story template, filled in at grooming. |
-| [`features/`](features/) | Specs for features that span several modules, one per SJRA ticket. |
+| [`features/`](features/) | Specs for features that span several modules, one per RAD ticket. |
 
 Diagrams are Mermaid inside the Markdown, so they diff and review like text.
