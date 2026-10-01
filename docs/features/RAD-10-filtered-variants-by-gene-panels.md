@@ -31,10 +31,10 @@ flowchart LR
 
 ## Modules impacted
 
-| Module | Impact |
+| Module | Changelist |
 |---|---|
 | etl | • New DAG `import_tenant_gene_panel`, with three modes:<br>&nbsp;&nbsp;◦ normal load: one or more files. S3 → parse → validate → **one `PATCH` per file**;<br>&nbsp;&nbsp;◦ DR replay: an S3 prefix. One `PATCH` per tenant, split by size;<br>&nbsp;&nbsp;◦ delete: a list of `{tenant}/{code}`. Writes a `_deleted` marker to S3, then calls `DELETE`.<br>• New dependency: `radiant_python`, pinned to a commit. |
-| portal (backend) | • Migration: tables `gene_panel` and `gene_panel_gene`, action `can_manage_gene_panel`.<br>• New endpoints: `PATCH /{tenant}/gene_panels`, `DELETE /{tenant}/gene_panels/{code}`, `GET /{tenant}/gene_panels`.<br>• Batched inserts, set-based symbol check against `ensembl_gene`, request body limit.<br>• New per-tenant MV `gene_panel_gene_mv`: create it, refresh it after each write.<br>• New SQON field `tenant_gene_panel` for germline and somatic SNV.<br>• Regenerate the Python and TS clients. |
+| portal (backend) | • Migration: tables `gene_panel` and `gene_panel_gene`, action `can_manage_gene_panel`.<br>• New endpoints: `PATCH /{tenant}/gene_panels`, `DELETE /{tenant}/gene_panels/{code}`, `GET /{tenant}/gene_panels`.<br>• Batched inserts, set-based symbol check against `ensembl_gene`, request body limit.<br>• New per-tenant MV `gene_panel_gene_mv`: create it, refresh it after each write.<br>• New SQON field `tenant_gene_panel` for germline and somatic SNV (one table + one field; no new query code).<br>• `with_dictionary=true` on the aggregate pads all tenant panel codes.<br>• Regenerate the Python and TS clients. |
 | portal (frontend) | • New facet `tenant_gene_panel` in the germline and somatic configs.<br>• Label map `code → name`.<br>• en/fr labels. |
 | mcp | • Bump the client SHA.<br>• Update the prompt doc.<br>• Optional: a tool that lists the panels. |
 | infra | • S3 archive prefix, with versioning.<br>• IAM for the Airflow role on the archive prefix:<br>&nbsp;&nbsp;◦ `s3:ListBucket` and `s3:GetObject` (load, replay);<br>&nbsp;&nbsp;◦ `s3:PutObject` (delete marker).<br>• Grant `can_manage_gene_panel` to the existing ETL service account.<br>• StarRocks:<br>&nbsp;&nbsp;◦ Ranger read grants on the MVs for the portal users (proxy read);<br>&nbsp;&nbsp;◦ privileges for the backend service user to create and refresh the MVs. |
@@ -220,7 +220,100 @@ WHERE gp.tenant_code = '{tenant}';
 | Support | • StarRocks supports async MVs on a JDBC catalog ([MV on external catalogs](https://docs.starrocks.io/docs/using_starrocks/async_mv/use_cases/data_lake_query_acceleration_with_materialized_views/)).<br>• `REFRESH ASYNC … EVERY` is the legacy form. Newer versions show it as `REFRESH SCHEDULE … EVERY` ([CREATE MATERIALIZED VIEW](https://docs.starrocks.io/docs/sql-reference/sql-statements/materialized_view/CREATE_MATERIALIZED_VIEW/)). |
 | Creation | • The backend creates the MV in the same places as the tenant views, so that every tenant has one:<br>&nbsp;&nbsp;◦ at tenant creation (`internal/service/tenant.go:68`);<br>&nbsp;&nbsp;◦ at API startup when `VIEW_REFRESH_ON_STARTUP_ENABLED=true` (`cmd/api/view_refresh.go:17`);<br>&nbsp;&nbsp;◦ with `go run ./cmd/refresh-tenants`. |
 | Refresh | • After each `PATCH` or `DELETE` commit: `REFRESH MATERIALIZED VIEW {tenant}_tenant.gene_panel_gene_mv FORCE WITH SYNC MODE` ([REFRESH MATERIALIZED VIEW](https://docs.starrocks.io/docs/sql-reference/sql-statements/materialized_view/REFRESH_MATERIALIZED_VIEW/)).<br>&nbsp;&nbsp;◦ `FORCE`: always refresh, even when StarRocks cannot detect the change.<br>&nbsp;&nbsp;◦ `WITH SYNC MODE`: the call returns only when the refresh succeeds or fails, so the API can return 503.<br>• Why the API must trigger it: a change in an external source cannot trigger the refresh. External MVs "only support asynchronous fixed-interval refresh and manual refresh" ([CREATE MATERIALIZED VIEW](https://docs.starrocks.io/docs/sql-reference/sql-statements/materialized_view/CREATE_MATERIALIZED_VIEW/)).<br>• Each refresh is a full refresh of the tenant's MV. Partition-level change detection on JDBC exists only for MySQL range-partitioned tables.<br>• Example size: 100 panels × 5,000 genes = 500,000 short rows. This is small.<br>• Refresh history: `information_schema.task_runs`. |
-| Filter | • Add `TenantGenePanelTable{Name: "gene_panel_gene_mv", Alias: "tgp", PerTenant: true}` and `Field{Name: "code", Alias: "tenant_gene_panel", CanBeFiltered: true, CanBeAggregated: true}`:<br>&nbsp;&nbsp;◦ in `GenePanelsTables` (`internal/types/gene_panels.go:50`);<br>&nbsp;&nbsp;◦ in the germline and somatic field lists.<br>• `PerTenant` resolves to `{tenant}_tenant.gene_panel_gene_mv` only when the tenant is in the request context (`internal/types/table_field.go:26-35`). Check `TENANT_VIEWS_READ_ENABLED` in each environment.<br>• The field filters on `code`, not on `name`. The public panels filter on `panel`, which is their name (`internal/types/gene_panels.go`).<br>• The existing joins handle the field without change:<br>&nbsp;&nbsp;◦ semi-join: `internal/repository/starrocks/snv_occurrences.go:62-107`;<br>&nbsp;&nbsp;◦ aggregate join: `:123-140`. |
+| Filter | • See [Filter handling (backend)](#filter-handling-backend) below. |
+
+#### Filter handling (backend)
+
+The new filter adds **no new query code**. It adds one table and one field. The existing gene panel path then builds the SQL. Paths below are in `portal/backend/`.
+
+**Type definitions** (in `internal/types/gene_panels.go`, next to the public panels):
+
+```go
+var TenantGenePanelTable = Table{
+	Name:      "gene_panel_gene_mv", // {tenant}_tenant.gene_panel_gene_mv
+	Alias:     "tgp",
+	PerTenant: true,
+}
+
+var TenantGenePanelField = Field{
+	Name:            "code",              // filter and group on the stable code
+	Alias:           "tenant_gene_panel", // SQON field name
+	CanBeFiltered:   true,
+	CanBeAggregated: true,
+	Table:           TenantGenePanelTable,
+}
+
+var GenePanelsTables = []Table{HpoGenePanelTable, OmimGenePanelTable, DddGenePanelTable,
+	CosmicGenePanelTable, OrphanetGenePanelTable, TenantGenePanelTable} // + TenantGenePanelTable
+```
+
+- Add `TenantGenePanelField` to `GermlineSNVOccurrencesFields` (`internal/types/germline_snv_occurrence.go:282`, "Genes" block) and to the somatic list (`internal/types/somatic_snv_occurrence.go:238-242`).
+
+**Request handling, step by step:**
+
+| Step | What happens | Code |
+|---|---|---|
+| 1. Route and access | • `POST /{tenant}/occurrences/germline/snv/{case_id}/{seq_id}/{task_id}/list` (also `count`, `aggregate`).<br>• `RequireTenantAccess` checks the tenant. When `TENANT_VIEWS_READ_ENABLED=true`, it binds the tenant to the request context.<br>• `requireAction(ActionSearchCase)` checks the action. | • `cmd/api/main.go:228-233`<br>• `internal/server/middlewares.go:164-166` |
+| 2. SQON validation | • `sqonToFilter` finds the field by its alias, `tenant_gene_panel`.<br>• An unknown field, or a field without `CanBeFiltered`, fails with `unauthorized or unknown field`. | • `internal/types/filter.go:156-209` |
+| 3. SQL condition | • `in` with one value gives `= ?`. With several values, it gives `IN (?, ?)`.<br>• The values are bound parameters, not string concatenation. | • `internal/types/filter.go:72-108` |
+| 4. Table name | • `TenantQualifiedName(ctx)` gives `{tenant}_tenant.gene_panel_gene_mv` when the tenant is in the context.<br>• Without a tenant, it gives the bare name. This is the same rule as for the occurrence tables. | • `internal/types/table_field.go:26-35` |
+| 5. List / count query | • The query uses a gene panel field, so `PrepareSNVListOrCountQuery` builds a `LEFT SEMI JOIN` subquery:<br>&nbsp;&nbsp;◦ `cf` = consequences of the partition;<br>&nbsp;&nbsp;◦ `LEFT JOIN` each selected panel table `ON panel.symbol = cf.symbol`;<br>&nbsp;&nbsp;◦ the subquery selects `tgp.code AS tenant_gene_panel`;<br>&nbsp;&nbsp;◦ the condition is rewritten to `cf.tenant_gene_panel IN (…)` (alias override).<br>• An occurrence is kept when **at least one consequence symbol** of its locus is in the panel. | • `internal/repository/starrocks/snv_occurrences.go:62-107` |
+| 6. Aggregate query | • `PrepareSNVAggOrStatisticsQuery` does `LEFT JOIN cf`, then `LEFT JOIN tgp ON tgp.symbol = cf.symbol`.<br>• `AggregateSNV` groups on `tgp.code AS bucket` and counts `distinct locus_id`. A locus with several genes in one panel is counted once.<br>• `tgp.code IS NOT NULL` removes the loci that are in no panel. | • `internal/repository/starrocks/snv_occurrences.go:123-140`, `:166-193` |
+| 7. Facet values with 0 hits | • Today `with_dictionary=true` pads the buckets from the static map in `facets.go`. An unknown facet returns 404.<br>• Change: for `tenant_gene_panel`, pad the buckets with all panel codes of the tenant (from the Postgres list, the same source as `GET /gene_panels`). Reuse the padding loop.<br>• Result: the facet lists every panel, with count 0 when it has no hit (C2). The frontend only needs the `code → name` labels. | • `internal/server/handlers_germline_snv_occurrences.go:237-260`<br>• `internal/repository/starrocks/facets.go:118` |
+
+**Generated SQL** (germline list, filter on two panels; simplified):
+
+```sql
+SELECT g_snv_o.locus_id, ...
+FROM {tenant}_tenant.germline__snv__occurrence g_snv_o
+JOIN ... -- variant join (JoinSNVOccurrencesWithVariants)
+LEFT SEMI JOIN (
+    SELECT cf.locus_id, cf.part, tgp.code AS tenant_gene_panel
+    FROM radiant.snv__consequence_filter_partitioned cf
+    LEFT JOIN {tenant}_tenant.gene_panel_gene_mv tgp ON tgp.symbol = cf.symbol
+    WHERE part = ?
+) cf ON cf.locus_id = g_snv_o.locus_id
+    AND cf.part = g_snv_o.part
+    AND (cf.tenant_gene_panel IN (?, ?))          -- 'EPILEPSY_V2', 'CARDIO_V1'
+WHERE g_snv_o.seq_id = ? AND g_snv_o.task_id = ? AND g_snv_o.part = ?
+ORDER BY ... LIMIT ?
+```
+
+**Generated SQL** (aggregate for the facet):
+
+```sql
+SELECT tgp.code AS bucket, count(distinct g_snv_o.locus_id) AS count
+FROM {tenant}_tenant.germline__snv__occurrence g_snv_o
+JOIN ... -- variant join
+LEFT JOIN radiant.snv__consequence_filter_partitioned cf
+    ON cf.locus_id = g_snv_o.locus_id AND cf.part = g_snv_o.part
+LEFT JOIN {tenant}_tenant.gene_panel_gene_mv tgp ON tgp.symbol = cf.symbol
+WHERE g_snv_o.seq_id = ? AND g_snv_o.task_id = ? AND g_snv_o.part = ?
+  AND tgp.code IS NOT NULL
+GROUP BY bucket
+ORDER BY count ASC, bucket ASC
+```
+
+**Behaviour and edge cases:**
+
+| Case | Behaviour |
+|---|---|
+| Combined with other filters | • A tenant panel and a public panel (for example `omim_gene_panel`) in the same SQON join in the same subquery. `and` / `or` work as for the public panels. |
+| `not-in` | • It renders as `NOT IN` (or `<>` for one value), inside the semi-join (`internal/types/filter.go:115-123`).<br>• Result: a locus is kept when **one of its consequence rows** has a panel code that is not in the list.<br>• A locus whose genes are in **no** tenant panel has `tgp.code = NULL`. `NULL NOT IN (…)` is not true, so the locus is **not** kept.<br>• The public panels behave the same way today. Test this case. Decide if the facet allows `not-in` for this field (open question). |
+| Unknown code in the SQON | • No error. The filter matches no locus. Example: a saved filter on a deleted panel returns 0 variants. |
+| Panel of another tenant | • Not possible: the MV of a tenant holds only the rows of that tenant (`WHERE gp.tenant_code = '{tenant}'`), and the route checks the tenant first. |
+| MV not refreshed yet | • The filter uses the previous genes until the refresh ends. The write API waits for the refresh (`WITH SYNC MODE`), so this window is short. |
+| Somatic SNV | • Same field, same SQL, on `somatic__snv__occurrence` (`tumor_seq_id` instead of `seq_id`). |
+
+**Performance:**
+
+| Item | Content |
+|---|---|
+| MV size | • The MV is small and native. For example, 100 panels × 5,000 genes = 500,000 rows of `(code, name, symbol)`. |
+| Distribution | • `DISTRIBUTED BY HASH(symbol)` matches the join key `tgp.symbol = cf.symbol`. |
+| Partition pruning | • The subquery reads only the partition of the case (`WHERE part = ?`), as for the public panels. |
+| Check | • Compare `EXPLAIN` of a tenant panel filter with an OMIM filter on QA. The plans must have the same shape. |
+
 
 **Query flow (AC2, backend + frontend):**
 
@@ -255,7 +348,7 @@ sequenceDiagram
 | Postgres repository | • Tenant isolation.<br>• One transaction per request: a failure on panel N writes no panel. |
 | Handlers | • 200, 400, 413, 403, 503.<br>• 422: all unknown symbols, grouped by code. |
 | Authorization | • Action-enforcement test. |
-| StarRocks | • The MV DDL renders per tenant.<br>• Filter and aggregate on `tenant_gene_panel`, with a fixture. |
+| StarRocks | • The MV DDL renders per tenant.<br>• Filter and aggregate on `tenant_gene_panel`, with a fixture (MV table + TSV in `test/data/`, as for `gene_panels_test.go`):<br>&nbsp;&nbsp;◦ `in` with one and with several codes;<br>&nbsp;&nbsp;◦ combined with `omim_gene_panel` in `and` / `or`;<br>&nbsp;&nbsp;◦ `not-in`, including a locus in no panel;<br>&nbsp;&nbsp;◦ a locus with two genes in one panel is counted once in the aggregate;<br>&nbsp;&nbsp;◦ an unknown code returns 0 rows, not an error.<br>• `with_dictionary=true` pads all tenant codes with count 0.<br>• Somatic SNV: same cases on one fixture. |
 
 ### mcp
 
@@ -303,7 +396,8 @@ sequenceDiagram
 | 6 | Backup | • What is the Postgres backup policy?<br>• Is S3 replay a second DR path, or the only one? | — |
 | 7 | StarRocks | • Which version is deployed in QA and prod?<br>• Does it support async MVs on JDBC? | — |
 | 8 | Ownership | • Who maintains the panels, and how often?<br>• What is the facet label (en/fr)? | — |
-| 9 | Follow-up | • Ticket number for the migration of `portal.py` to `radiant_python`. | — |
+| 9 | `not-in` | • `not-in` on a panel also drops the loci that are in no panel (SQL `NULL` logic). Allow it, change it, or hide it for this facet? | • Hide `not-in` for this facet |
+| 10 | Follow-up | • Ticket number for the migration of `portal.py` to `radiant_python`. | — |
 
 ## Linked PRs
 
