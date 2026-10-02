@@ -24,8 +24,10 @@ Do not write code. Do not create branches. Do not edit `docs/contracts/*` until 
   - its scope (for example a permission that applies to one organization, or to the whole tenant);
   - its constraints (required columns, keys, unique rules) against the data you plan to write;
   - its other readers and writers. A new writer can change what they show.
+- **Copy the existing mechanism exactly.** When the feature adds something that already exists in another form (a new filter next to existing filters, a new import next to existing imports), read how the existing one works end to end: data model, API field, UI config, labels. Use the same mechanism. Do not invent a parallel one (an extra endpoint, a label map, a new naming rule).
+- **Every new component needs a consumer.** Drop an endpoint, column or table that nothing in the story reads. List it in **Frozen scope**.
 - **Check the access path of each read and write.** For each call to a data store, name the identity that runs it:
-  - the service's own privileged connection (schema changes, refreshes, provisioning);
+  - the service's own privileged connection (schema changes, refreshes, provisioning, reads of public reference data);
   - or the caller's identity. Then check every layer that authorizes the caller (for example the API permission **and** the data store's own access rules). One layer does not imply the other.
   - When a feature makes an account do something it never did before (for example the first data-store read by a service account), check that the account is set up for it in every environment. Put the setup in the rollout order.
 
@@ -39,7 +41,10 @@ Do not write code. Do not create branches. Do not edit `docs/contracts/*` until 
 - Design defaults (use them unless the user says otherwise):
   - put validation and parsing in the component that owns the data. Clients send the raw input, so a later client (a UI, a script) can use the same entry point;
   - keep pipeline jobs thin: they move the input and call the owner;
-  - keep the first version small: leave out update, delete and recovery paths unless the story asks for them, and list them in **Frozen scope**.
+  - keep the first version small: leave out update, delete and recovery paths unless the story asks for them, and list them in **Frozen scope**;
+  - match the HTTP method to the semantics: `POST` creates, `PUT` replaces a whole resource or set (safe to retry), `PATCH` changes part of it;
+  - when an operation replaces a whole set, check what else lives in the same store and must not be deleted (the delete scope), and make the input carry the complete set (for example one file per run);
+  - keep an existing behaviour that has a known quirk. Do not fix it in passing: note it in **Frozen scope** ("a separate ticket will fix it if needed").
 
 ## 3. Follow the template exactly
 
@@ -58,6 +63,7 @@ Do not write code. Do not create branches. Do not edit `docs/contracts/*` until 
   - **Modules impacted:** one row per module. The areas (components, not file paths) in one cell, comma-separated.
   - **Tasks:** the template table. One task = one intent = usually one PR. Code, IaC and docs only. Operations (deploy, scripts to run, account setup, QA checks, first load) go in the rollout order. Add a Labels or UX task when the story needs one, or say why not in one line.
   - **Contract changes:** one row per boundary, with the migration and compatibility note.
+  - **Pipeline job input:** when the story adds a job, give its run config in the module row of **Chosen approach**: each param with its type, whether it is required, its use, and one example. Follow the param names of the existing jobs.
   - **Merge and rollout order:** a short numbered list, as in the template. For each step: what, and what breaks if it is skipped. Then one line on backfill and feature flags.
   - **Test strategy:** module table `| Module | How the story is proven |`. Tag each bullet with the AC it proves. Add a `QA (manual)` row for the checks by hand.
   - **Risks and coverage:** one row per business risk of the story. If the story checks none, say so in one line.
