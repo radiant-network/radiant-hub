@@ -10,7 +10,7 @@ Follow these steps in order. Don't skip the contract step: that's where cross-mo
 ## 1. Spec
 
 - Run `make status` to see which modules are checked out. If one you need is missing, ask the user to run `make bootstrap`.
-- If `docs/features/SJRA-xxxx-*.md` exists, read it. Otherwise copy `docs/features/0000-template.md` and fill it in with the user.
+- If `docs/features/RAD-xxxx-*.md` exists, read it. Otherwise copy `docs/features/0000-template.md` and fill it in with the user.
 - Read the `CLAUDE.md` of every impacted module before planning its part.
 
 ## 2. Contracts first
@@ -25,7 +25,7 @@ Create the same branch in every impacted repo:
 
 ```sh
 git -C <module> fetch origin
-git -C <module> switch -c feat/sjra-xxxx-<slug> origin/main
+git -C <module> switch -c feat/rad-xxxx-<slug> origin/main
 ```
 
 If a module has uncommitted changes, stop and ask. Don't stash the user's work.

@@ -30,16 +30,20 @@ See `docs/architecture/overview.md` for the diagram. The boundaries are written 
 
 Most cross-module bugs happen at these boundaries. When a change touches one, update the contract doc in the same piece of work.
 
+## Stories
+
+To write or create a Jira story (project RAD on ferlab-crsj.atlassian.net), use the `jira-story` skill. It follows `docs/stories/story-template.md`.
+
 ## Cross-module work
 
 For any feature that touches more than one module, use the `cross-module-feature` skill. The rules:
 
-- The spec lives in `docs/features/SJRA-xxxx-<slug>.md` (from `docs/features/0000-template.md`).
-- Use the **same branch name in every impacted repo**: `feat/sjra-xxxx-<slug>`.
+- The spec lives in `docs/features/RAD-xxxx-<slug>.md` (from `docs/features/0000-template.md`).
+- Use the **same branch name in every impacted repo**: `feat/rad-xxxx-<slug>`.
 - Run git and gh **inside the module**: `git -C etl …`, `cd portal && gh pr create`, or `gh --repo radiant-network/<repo>`. Running `gh pr create` at the hub root targets the hub.
 - Open **one PR per repo**. Each links to the spec and to the sibling PRs.
 - Merge in dependency order: schema / ETL → portal backend → frontend and MCP.
-- Follow each repo's own conventions. The portal enforces CommitLint `type(scope): SJRA-### message` and its `.github/pull_request_template.md`.
+- Follow each repo's own conventions. The portal enforces CommitLint `type(scope): RAD-### message` and its `.github/pull_request_template.md`.
 
 ## Docs placement
 
