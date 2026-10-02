@@ -20,6 +20,14 @@ Do not write code. Do not create branches. Do not edit `docs/contracts/*` until 
 - If the scope is not clear, use up to 3 Explore agents in parallel, one per module. Ask each agent for `file:line` and short quotes, not for opinions.
 - **Before you cite an agent result, check it yourself** (`sed -n`, `grep`). Agents give wrong paths and wrong line numbers.
 - You research in depth. The doc keeps only the conclusions. Do not paste the research into the doc.
+- **Reuse before you add.** Before you propose a new table, column, endpoint, permission or role, look for an existing one. Then check that it really fits:
+  - its scope (for example a permission that applies to one organization, or to the whole tenant);
+  - its constraints (required columns, keys, unique rules) against the data you plan to write;
+  - its other readers and writers. A new writer can change what they show.
+- **Check the access path of each read and write.** For each call to a data store, name the identity that runs it:
+  - the service's own privileged connection (schema changes, refreshes, provisioning);
+  - or the caller's identity. Then check every layer that authorizes the caller (for example the API permission **and** the data store's own access rules). One layer does not imply the other.
+  - When a feature makes an account do something it never did before (for example the first data-store read by a service account), check that the account is set up for it in every environment. Put the setup in the rollout order.
 
 ## 2. First draft: the options, not a decision
 
@@ -28,6 +36,10 @@ Do not write code. Do not create branches. Do not edit `docs/contracts/*` until 
 - For each option: behaviour, modules touched, main pro and con, effort (S/M/L). One short table row per option.
 - You can mark one option as "preliminary lean". Say why in one line.
 - Put the options in a temporary `## Options considered` section after **Open questions**. Remove it when the user decides (see section 6).
+- Design defaults (use them unless the user says otherwise):
+  - put validation and parsing in the component that owns the data. Clients send the raw input, so a later client (a UI, a script) can use the same entry point;
+  - keep pipeline jobs thin: they move the input and call the owner;
+  - keep the first version small: leave out update, delete and recovery paths unless the story asks for them, and list them in **Frozen scope**.
 
 ## 3. Follow the template exactly
 
@@ -44,7 +56,7 @@ Do not write code. Do not create branches. Do not edit `docs/contracts/*` until 
   - **Story:** link, reviewer, status, one branch `feat/rad-xxxx-<slug>` for all repos.
   - **Chosen approach:** a one-line **Summary**, then a module table (see section 4). Per module: the approach and the integration point (the existing component it plugs into, by name). No rejected alternatives section.
   - **Modules impacted:** one row per module. The areas (components, not file paths) in one cell, comma-separated.
-  - **Tasks:** the template table. One task = one intent = usually one PR. Code, IaC and docs only. Operations (deploy, `refresh-tenants`, QA checks, first load) go in the rollout order. Add a Labels or UX task when the story needs one, or say why not in one line.
+  - **Tasks:** the template table. One task = one intent = usually one PR. Code, IaC and docs only. Operations (deploy, scripts to run, account setup, QA checks, first load) go in the rollout order. Add a Labels or UX task when the story needs one, or say why not in one line.
   - **Contract changes:** one row per boundary, with the migration and compatibility note.
   - **Merge and rollout order:** a short numbered list, as in the template. For each step: what, and what breaks if it is skipped. Then one line on backfill and feature flags.
   - **Test strategy:** module table `| Module | How the story is proven |`. Tag each bullet with the AC it proves. Add a `QA (manual)` row for the checks by hand.
@@ -61,12 +73,14 @@ Do not write code. Do not create branches. Do not edit `docs/contracts/*` until 
   - Check that every row has the same number of columns. A `|` inside a cell breaks the table.
 - Each bullet is one or two short sentences.
 - **Do not include:**
-  - references to code files: no file paths, no `path:line`, no function, type or variable names. Name the component instead ("the gene search of the gene list facet", not `GenesRepository.SearchGenes`, `genes.go:85`). Keep the names that are part of a contract: tables, columns, endpoints, SQON fields, actions, DAG names, config flags;
+  - references to code files: no file paths, no `path:line`, no function, type or variable names. Name the component in plain words instead (for example "the existing gene search", not the function name and its file). Keep the names that are part of a contract: tables, columns, endpoints, query fields, permissions, job names, config flags;
   - SQL, Go, Python or DDL snippets;
   - per-route error-code lists, DAG param tables, task-by-task behaviour;
-  - source-code analysis of third-party tools (for example StarRocks internals);
+  - source-code analysis of third-party tools;
   - test lists (say how the AC is proven, not each test case);
-  - "facts" dump tables.
+  - "facts" dump tables;
+  - negative justifications ("X cannot be used because …"). Write what the plan does, not what it does not use;
+  - concerns that do not matter at the real scale (for example the cost of reading a small table).
 - Diagrams are optional. Add at most one, only when a flow across systems is hard to follow in words. Validate it before you write it:
 
   ```sh
@@ -81,6 +95,7 @@ Do not write code. Do not create branches. Do not edit `docs/contracts/*` until 
 - For genomics claims, cite a paper with its DOI or PubMed ID.
 - If you cannot verify a claim, say so ("not verified", "check on QA"). Do not guess.
 - When the user asks for a review, check every claim again and correct the wrong ones.
+- When the user says a claim is wrong, check it again in the source before you agree or disagree: the project code, or the upstream source at the version that is deployed. Give the evidence in chat. Then let the user decide what the doc says.
 
 ## 6. Record the decisions
 
@@ -91,7 +106,8 @@ Do not write code. Do not create branches. Do not edit `docs/contracts/*` until 
   grep -n -o -E '\b[A-H][0-9](-[a-z])?\b' docs/features/<spec>.md
   ```
 - Remove the decided items from **Open questions**.
-- Update the sections that depend on the decision: modules impacted, tasks, contract changes, rollout order (a decision can reverse the usual ETL → portal order).
+- When the user does not know yet, do not choose for them. In **Chosen approach**, write "not decided yet (see open questions)". In **Open questions**, list the options as sub-bullets, each with its cost in a few words. Do not ask the same question again in chat.
+- Update the sections that depend on the decision: modules impacted, tasks, contract changes, rollout order (a decision can reverse the usual merge order).
 - When the user rejects a sub-option, remove everything that belongs to it.
 
 ## 7. Before each edit
