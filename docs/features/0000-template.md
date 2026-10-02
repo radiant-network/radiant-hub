@@ -41,9 +41,3 @@ Every change to a boundary (StarRocks table/column, enum value, API endpoint/fie
 Migrations, backfills, feature flags, and what breaks if the order is not respected.
 
 ## Open questions
-
-## Linked PRs
-
-- etl:
-- portal:
-- mcp:

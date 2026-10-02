@@ -1,6 +1,6 @@
 ---
 name: cross-module-feature
-description: Drive a feature that spans several Radiant modules (etl, portal, mcp) from the hub — spec, contract updates, same-named branches, per-module implementation, linked PRs in merge order. Use when a request touches more than one module, or names an SJRA ticket whose scope crosses modules.
+description: Drive a feature that spans several Radiant modules (etl, portal, mcp) from the hub — spec, contract updates, same-named branches, per-module implementation, PRs in merge order. Use when a request touches more than one module, or names an SJRA ticket whose scope crosses modules.
 ---
 
 # Cross-module feature
@@ -46,5 +46,5 @@ For every item in "Contract changes", check that the writer and the reader agree
 
 - Only push and open PRs when the user asks.
 - Run `gh pr create` **inside each module** (or pass `--repo radiant-network/<repo>`), never at the hub root.
-- Open them in merge order. Each description links to the spec and to the sibling PRs. Once all PRs exist, add their links to the spec's "Linked PRs" section.
+- Open them in merge order. Each description links to the spec and to the sibling PRs.
 - Use the module's PR template where one exists (the portal requires `.github/pull_request_template.md`).
