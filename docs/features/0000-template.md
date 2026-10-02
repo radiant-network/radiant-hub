@@ -47,14 +47,6 @@ Some needs become tasks of their own, so they don't get absorbed along the way:
 - **Specific UX**: if the story requires interface design work (new screen, new interaction, mockup to validate), create a UX task.
 - **Specific labels**: if the story introduces user-visible text that needs validation (clinical terms, error messages, translations), create a Labels task.
 
-## Contract changes
-
-Data, schema or API changes. Write "none" if that is the case. Otherwise list every change to a boundary (StarRocks table/column, enum value, API endpoint/field) with its writer, its readers, and the matching update to `docs/contracts/`. Cover migration, compatibility with existing data, API versioning, and impact on consuming systems.
-
-| Contract | Change | Writer | Readers | Migration / compatibility |
-|---|---|---|---|---|
-| … | … | … | … | … |
-
 ## Merge and rollout order
 
 1. etl: …

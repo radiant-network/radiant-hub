@@ -22,13 +22,13 @@ Each module has its own `CLAUDE.md`, loaded when you work in that folder. It is 
 
 ## How modules connect
 
-See `docs/architecture/overview.md` for the diagram. The boundaries are written down in `docs/contracts/`:
+See `docs/architecture/overview.md` for the diagram. The boundaries:
 
-- **StarRocks schema** (`docs/contracts/starrocks-schema.md`): the ETL writes it. The portal backend and the MCP read it.
-- **Portal API** (`docs/contracts/portal-api.md`): the portal defines it. Consumers are the frontend (generated TS client), the MCP (generated `radiant_python` client) and the ETL (`PATCH /{tenant}/cases/batch`).
+- **StarRocks schema**: the ETL writes it. The portal backend and the MCP read it.
+- **Portal API**: the portal defines it (OpenAPI spec `portal/backend/docs/swagger.yaml`). Consumers are the frontend (generated TS client), the MCP (generated `radiant_python` client) and the ETL (`PATCH /{tenant}/cases/batch`).
 - **Identity**: Keycloak issues the JWTs used by the portal, the MCP, and StarRocks itself (the MCP passes the JWT through).
 
-Most cross-module bugs happen at these boundaries. When a change touches one, update the contract doc in the same piece of work.
+Most cross-module bugs happen at these boundaries. When a change touches one, check both sides (writer and readers) in the same piece of work.
 
 ## Stories
 
@@ -48,7 +48,7 @@ For any feature that touches more than one module, use the `cross-module-feature
 ## Docs placement
 
 - **Module-internal** (how the ETL fans out writers, a DAG's design, a React component): stays in the module (e.g. `etl/design/SJRA-*.md`) and is reviewed with the code.
-- **Cross-module** (architecture, contracts, ADRs, specs spanning modules): `docs/` here.
+- **Cross-module** (architecture, ADRs, specs spanning modules): `docs/` here.
 
 ## Safety
 
