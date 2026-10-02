@@ -9,13 +9,13 @@ The output is one Markdown file in `docs/features/`. It follows `docs/features/0
 
 **Level of detail:** use `docs/features/RAD-15-cosmic-cmc-snv.md` as the reference (about 110 lines). A spec says *what* changes and *why*. The *how* (SQL, Go types, DAG task internals, error codes per route) comes with the code and is reviewed in the PRs.
 
-Do not write code. Do not create branches. Do not edit `docs/contracts/*` until the user has made the decisions. Do not commit unless the user asks.
+Do not write code. Do not create branches. Do not commit unless the user asks.
 
 ## 1. Collect the facts
 
 - Run `make status`. Do not assume that a module is checked out.
 - Read the `CLAUDE.md` of each module that the feature can touch.
-- Read `docs/architecture/overview.md` and `docs/contracts/*.md`.
+- Read `docs/architecture/overview.md`.
 - Search for existing work first: the code that already does part of the feature, and the data models that exist but are not used. Use `grep`.
 - If the scope is not clear, use up to 3 Explore agents in parallel, one per module. Ask each agent for `file:line` and short quotes, not for opinions.
 - **Before you cite an agent result, check it yourself** (`sed -n`, `grep`). Agents give wrong paths and wrong line numbers.
@@ -62,7 +62,7 @@ Do not write code. Do not create branches. Do not edit `docs/contracts/*` until 
   - **Chosen approach:** a one-line **Summary**, then a module table (see section 4). Per module: the approach and the integration point (the existing component it plugs into, by name). No rejected alternatives section.
   - **Modules impacted:** one row per module. The areas (components, not file paths) in one cell, comma-separated.
   - **Tasks:** the template table. One task = one intent = usually one PR. Code, IaC and docs only. Operations (deploy, scripts to run, account setup, QA checks, first load) go in the rollout order. Add a Labels or UX task when the story needs one, or say why not in one line.
-  - **Contract changes:** one row per boundary, with the migration and compatibility note.
+  - **Boundaries:** a change to a StarRocks table or column, an enum value, or an API endpoint or field goes in the module row of **Chosen approach**, with its readers and its migration or compatibility note.
   - **Pipeline job input:** when the story adds a job, give its run config in the module row of **Chosen approach**: each param with its type, whether it is required, its use, and one example. Follow the param names of the existing jobs.
   - **Merge and rollout order:** a short numbered list, as in the template. For each step: what, and what breaks if it is skipped. Then one line on backfill and feature flags.
   - **Test strategy:** module table `| Module | How the story is proven |`. Tag each bullet with the AC it proves. Add a `QA (manual)` row for the checks by hand.
@@ -79,7 +79,7 @@ Do not write code. Do not create branches. Do not edit `docs/contracts/*` until 
   - Check that every row has the same number of columns. A `|` inside a cell breaks the table.
 - Each bullet is one or two short sentences.
 - **Do not include:**
-  - references to code files: no file paths, no `path:line`, no function, type or variable names. Name the component in plain words instead (for example "the existing gene search", not the function name and its file). Keep the names that are part of a contract: tables, columns, endpoints, query fields, permissions, job names, config flags;
+  - references to code files: no file paths, no `path:line`, no function, type or variable names. Name the component in plain words instead (for example "the existing gene search", not the function name and its file). Keep the names that other modules or users rely on: tables, columns, endpoints, query fields, permissions, job names, config flags;
   - SQL, Go, Python or DDL snippets;
   - per-route error-code lists, DAG param tables, task-by-task behaviour;
   - source-code analysis of third-party tools;
@@ -113,7 +113,7 @@ Do not write code. Do not create branches. Do not edit `docs/contracts/*` until 
   ```
 - Remove the decided items from **Open questions**.
 - When the user does not know yet, do not choose for them. In **Chosen approach**, write "not decided yet (see open questions)". In **Open questions**, list the options as sub-bullets, each with its cost in a few words. Do not ask the same question again in chat.
-- Update the sections that depend on the decision: modules impacted, tasks, contract changes, rollout order (a decision can reverse the usual merge order).
+- Update the sections that depend on the decision: modules impacted, tasks, rollout order (a decision can reverse the usual merge order).
 - When the user rejects a sub-option, remove everything that belongs to it.
 
 ## 7. Before each edit
@@ -126,4 +126,4 @@ Do not write code. Do not create branches. Do not edit `docs/contracts/*` until 
 
 - Give a short summary in chat: what changed, decisions recorded, claims corrected, points still open or not verified.
 - Do not paste the document into chat.
-- Next step, after the user approves: run the `cross-module-feature` skill from step 2 (contracts).
+- Next step, after the user approves: run the `cross-module-feature` skill from step 2 (branches).
