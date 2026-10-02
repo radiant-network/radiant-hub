@@ -84,7 +84,7 @@ The story checks no particular business risk. The tests above still pin the Fran
 ## Open questions
 
 - **Re-annotation after a COSMIC refresh:** COSMIC is a broker load from S3, not an Iceberg source, so `reannotate_open_data` cannot see that it changed (same case as cytoband, `radiant/tasks/data/open_data.py` `REANNOTATION_SOURCES`). Proposal for this story: document a forced run after each COSMIC import. A dedicated gate (e.g. recording the COSMIC load in `open_data_release`) would be a separate ticket.
-- **Sorting nulls:** does the backend sort already put `NULL` last in both directions? If not, task 3 adds `NULLS LAST` for the CMC fields.
+- ~~**Sorting nulls:** does the backend sort already put `NULL` last in both directions?~~ Resolved in RAD-18: no, StarRocks puts `NULL` first on ASC. The backend now emits `NULLS LAST` for fields flagged `SortNullsLast` (the three sortable CMC fields only); other sorts are unchanged.
 - **CMC Ratio facet precision:** the range slider needs an `intervalDecimal` for values close to 0 (e.g. `1e-4`). Range entered as a decimal or in scientific notation?
 
 ## Approval
@@ -105,5 +105,5 @@ The story checks no particular business risk. The tests above still pin the Fran
 
 ## Linked PRs
 
-- etl: …
-- portal: …
+- etl: radiant-network/radiant-portal-pipeline#267 (RAD-16, merged)
+- portal backend (RAD-18): radiant-network/radiant-portal#1686 (code), radiant-network/radiant-portal#1687 (swagger and generated clients, stacked on #1686)
