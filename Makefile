@@ -2,12 +2,14 @@
 
 WORKSPACE ?= $(HOME)/workspace
 INFRA ?=
+BIOINFO ?=
+OPTIONAL = $(if $(INFRA),--infra $(INFRA)) $(if $(BIOINFO),--bioinfo $(BIOINFO))
 
-bootstrap: ## Clone core repos; asks about each infra repo (INFRA=all|none|ask)
-	./scripts/bootstrap.sh $(if $(INFRA),--infra $(INFRA))
+bootstrap: ## Clone core repos; asks about each optional repo (INFRA=, BIOINFO=all|none|ask)
+	./scripts/bootstrap.sh $(OPTIONAL)
 
 link: ## Symlink existing clones from WORKSPACE instead of cloning
-	./scripts/bootstrap.sh --link $(WORKSPACE) $(if $(INFRA),--infra $(INFRA))
+	./scripts/bootstrap.sh --link $(WORKSPACE) $(OPTIONAL)
 
 status: ## Branch and state of every checked-out repo
 	./scripts/status.sh

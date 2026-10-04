@@ -73,7 +73,7 @@ Do not write code. Do not create branches. Do not commit unless the user asks.
 ## 4. Write for humans
 
 - Short sentences, active voice, one idea per sentence (ASD-STE100 style).
-- **Scope lists by module, in tables.** Prefer a two-column table over a bullet list: the left column is the module (`portal (backend)`, `etl`, `portal (frontend)`, `mcp`, `infra`), the right column holds the bullets for that module.
+- **Scope lists by module, in tables.** Prefer a two-column table over a bullet list: the left column is the module (`portal (backend)`, `etl`, `portal (frontend)`, `mcp`, `infra`, `bioinfo`), the right column holds the bullets for that module.
   - In a cell, write `• item<br>`, and `&nbsp;&nbsp;◦ sub-item<br>` for a sub-item. Bold the label at the start of a bullet (`• **Storage:** …`).
   - Omit a module row when it has nothing to say.
   - Check that every row has the same number of columns. A `|` inside a cell breaks the table.

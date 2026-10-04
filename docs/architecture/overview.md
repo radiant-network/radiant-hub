@@ -2,6 +2,7 @@
 
 ```mermaid
 flowchart LR
+  NF["bioinfo/ Nextflow pipelines<br/>SNV, CNV post-processing, QC"] -->|VCFs, QC metrics| etl
   subgraph etl["etl/ (Airflow)"]
     VCF[VCF / TSV inputs] --> Extract[extract + accumulate]
     Extract --> Iceberg[(Iceberg on S3)]
@@ -25,6 +26,7 @@ flowchart LR
 ## Components
 
 - **ETL** (`etl/`): Airflow DAGs. Parses VCFs, writes Iceberg tables, loads StarRocks, computes frequencies, and imports open data. It also runs the Nextflow post-processing and QC automations, then registers their outputs on cases through the portal API.
+- **Bioinfo pipelines** (`bioinfo/`): Ferlab Nextflow pipelines owned by the bioinfo team: `snv-post-processing`, `cnv-post-processing` and `quality-control-pipeline`. The ETL bakes a pinned revision of each into its Nextflow launcher image (`etl/Dockerfile.nextflow.launcher`), runs them on k8s, and loads their outputs.
 - **StarRocks**: the analytics store the portal and the MCP read. Shared tables (open data, cross-tenant) live in the base DB. Per-tenant tables live in `{tenant}_tenant`.
 - **Portal** (`portal/`): Go REST API (plus an async batch worker) and a React frontend. Its OpenAPI spec (`backend/docs/swagger.yaml`) defines the API.
 - **MCP** (`mcp/`): exposes StarRocks query tools and some portal-API tools to LLM clients. It holds no StarRocks credentials. Every query runs under the caller's Keycloak JWT, which StarRocks validates itself.

@@ -29,6 +29,7 @@ The areas of the code that will change. The reviewer uses this to know where to 
 | portal (frontend) | … | … |
 | mcp | … | … |
 | infra | … | … |
+| bioinfo | … | … |
 
 ## Tasks
 

@@ -3,6 +3,7 @@
 /portal
 /mcp
 /infra/
+/bioinfo/
 
 # Local-only
 .claude/settings.local.json

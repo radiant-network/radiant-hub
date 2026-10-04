@@ -12,21 +12,23 @@ radiant-hub/
 ├── etl/               → radiant-portal-pipeline   (own .git)
 ├── portal/            → radiant-portal            (own .git)
 ├── mcp/               → radiant-mcp               (own .git)
-└── infra/             → optional infra repos      (own .git each)
+├── infra/             → optional infra repos      (own .git each)
+└── bioinfo/           → optional Nextflow pipelines run by the ETL (own .git each)
 ```
 
 ## Getting started
 
 ```sh
 git clone <this repo> radiant-hub && cd radiant-hub
-make bootstrap                      # clones etl, portal, mcp; asks about each infra repo
-make bootstrap INFRA=none           # no prompt, no infra
+make bootstrap                      # clones etl, portal, mcp; asks about each infra and bioinfo repo
+make bootstrap INFRA=none BIOINFO=none   # no prompt, core repos only
+make bootstrap BIOINFO=all          # also clone every bioinfo pipeline
 make link WORKSPACE=~/workspace     # already have clones? symlink them instead of re-cloning
 make status                         # branch / dirty / ahead-behind of every repo
 make pull                           # fast-forward every clean repo
 ```
 
-Bootstrap is idempotent. Re-run it at any time to add a repo you skipped (e.g. an infra repo). Paths that already exist are never touched.
+Bootstrap is idempotent. Re-run it at any time to add a repo you skipped (e.g. an infra or bioinfo repo). Paths that already exist are never touched.
 
 ## Working on a cross-module feature
 
@@ -44,4 +46,4 @@ With Claude Code, start `claude` at the hub root and ask it to work on the featu
 
 ## Adding a repo
 
-Add a line to `repos.conf` (`<path> <git url> <core|infra>`) and to `.gitignore`, then run `make bootstrap`.
+Add a line to `repos.conf` (`<path> <git url> <core|infra|bioinfo>`). Under a new top-level folder, also add that folder to `.gitignore`. A new group also needs its option in `scripts/bootstrap.sh`, then run `make bootstrap`.

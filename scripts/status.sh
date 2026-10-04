@@ -9,7 +9,7 @@ HUB="$(cd "$(dirname "$0")/.." && pwd)"
 PULL=false
 [ "${1:-}" = "--pull" ] && PULL=true
 
-printf '%-20s %-40s %-7s %s\n' PATH BRANCH STATE UPSTREAM
+printf '%-34s %-40s %-7s %s\n' PATH BRANCH STATE UPSTREAM
 while read -r path _ _ <&3; do
   case "$path" in ''|'#'*) continue ;; esac
   dir="$HUB/$path"
@@ -27,5 +27,5 @@ while read -r path _ _ <&3; do
     set -- $counts
     upstream="behind $1, ahead $2"
   fi
-  printf '%-20s %-40s %-7s %s\n' "$path" "$branch" "$state" "$upstream"
+  printf '%-34s %-40s %-7s %s\n' "$path" "$branch" "$state" "$upstream"
 done 3<"$HUB/repos.conf"
