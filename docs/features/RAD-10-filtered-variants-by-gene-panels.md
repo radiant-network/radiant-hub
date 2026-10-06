@@ -111,4 +111,4 @@ No migration, no backfill. No feature flag: the facet is empty until a panel is 
 
 | Date | Need found | Option A: new ticket (link) | Option B: re-approval (by whom, when) |
 |---|---|---|---|
-| … | … | … | … |
+| 2026-10-05 | Task 5 (etl): the DAG does not use the generated `radiant_python` client. It sends the `PUT /{tenant}/gene_panels` with the hand-written ETL portal client (`radiant/tasks/nextflow/portal.py`, `requests`), with the same `radiant_api_conn` connection as the other portal calls. Reason: the client is too much for one call, and it must be installed and pinned in each Airflow runtime (local image, MWAA Airflow 2 and 3, QA). Effects: the frozen-scope rule "The hand-written ETL portal client does not change" no longer applies; there is no `radiant_python` pin in the ETL; infra task 4 does not need a QA Airflow runtime for `radiant_python`, only S3 read access for the worker. Moving the ETL to `radiant_python` stays a separate ticket. | — | Pending: Jeremy Costanza |
