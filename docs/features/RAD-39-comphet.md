@@ -24,14 +24,14 @@
 ### portal (backend)
 
 - **Fields:** `has_comphet` is selectable, filterable and aggregatable, like the somatic `hotspot` boolean. `comphet_genes` is selectable, returned in the list.
-- **Partner filter:** a new filterable sqon field on the pair table (for example `comphet_of`). Its value is the locus string of the clicked variant (`1-1000-A-G`). The backend resolves it to a `locus_id` through the tenant's variant table, which stores that string. It keeps the occurrences whose `locus_id` is a `partner_locus_id` of that variant for the same sample. The join reuses the semi-join that the consequence and gene-panel filters already use, in the list, count, aggregate and statistics queries, so the facets follow the filter.
+- **Partner filter:** a new filterable sqon field on the pair table (for example `comphet_of`). Its value is the `locus_id` of the clicked variant. The backend keeps the occurrences whose `locus_id` is a `partner_locus_id` of that variant for the same sample. No locus conversion is needed. The join reuses the semi-join that the consequence and gene-panel filters already use, in the list, count, aggregate and statistics queries, so the facets follow the filter.
 - **Gene:** the existing `symbol` filter (a consequence in that gene).
 - **Contract:** additive. OpenAPI, TS and Python clients regenerated. The test DDL copies, the local docker DDL and the multi-tenant test loader get the new columns and table.
 
 ### portal (frontend)
 
 - **Column:** a new germline SNV column that lists `GENE (n)`, reusing the existing list cells.
-- **Click on `n`:** opens a **new query** in the query bar, with two pills: the existing `symbol` pill with the gene, and the new partner pill with the variant's locus. The active query is left unchanged. The query builder can add an empty query, but has no action that adds a pre-filled one; a small one is added. The pill shows the locus truncated; the full value is in its tooltip.
+- **Click on `n`:** opens a **new query** in the query bar, with two pills: the existing `symbol` pill with the gene, and the new partner pill. The partner pill sends the clicked variant's `locus_id` (already on the row) and shows its locus (`1-1000-A-G`, truncated, full value in the tooltip) through the pill's existing display override (`overrideValuesName`). The backend ignores that display field. The active query is left unchanged. The query builder can add an empty query, but has no action that adds a pre-filled one; a small one is added.
 - **Facet:** `has_comphet` in the Occurrence group, the first boolean facet of the occurrence pages.
 - **Status:** the column shows the pairs as candidates when the case is not a complete trio. The rule is computed from the case entity already loaded by the page: the proband's mother and father both have a sequencing experiment. No trio helper exists today; one is added.
 
@@ -49,7 +49,7 @@
 |---|---|---|---|---|---|
 | 1 | Load the compound-het pairs | etl | Parse `slivar_comphet`, new Iceberg table and its init, new StarRocks table with insert and copy-partition, `import_part` wiring, data QA on the pairs, tests | — | yes (new tables, no reader) |
 | 2 | Compound-het summary on the occurrence | etl | `has_comphet`, `comphet_genes` (DDL, migration), occurrence insert joins the pair counts, pair insert ordered before the occurrence insert in `import_part`, data QA on the counts, tests | Task 1 | yes, once the migration has run |
-| 3 | Expose compound hets in the API | portal (backend) | Two occurrence fields, partner sqon field (locus → `locus_id`, join on the pair table in the four query paths), OpenAPI, clients, test DDL and fixtures, tests | Task 2 | yes (additive), but see rollout |
+| 3 | Expose compound hets in the API | portal (backend) | Two occurrence fields, partner sqon field (`locus_id` of the clicked variant, join on the pair table in the four query paths), OpenAPI, clients, test DDL and fixtures, tests | Task 2 | yes (additive), but see rollout |
 | 4 | Labels | portal (frontend) | EN/FR: column header and tooltip, facet label, candidate vs confirmed wording. Validated by the clinical team | — | yes |
 | 5 | Compound-het column, facet and click | portal (frontend) | Column and cell, boolean facet, trio helper, click opens a new query with the `symbol` and partner pills, partner pill label | Tasks 3, 4 | yes once 3 is deployed |
 
@@ -69,8 +69,8 @@ No feature flag and no backfill: cases imported before step 2 have no compound h
 | Module | How the story is proven |
 |---|---|
 | etl | • Unit tests on the tag parsing with a slivar VCF fixture: trio, duo, solo, two genes for one variant, no tag, other sample's entries ignored (AC 1, 7).<br>• StarRocks integration tests: pair table filled with resolved ids, summary counts per gene, re-import of a task replaces its pairs (AC 1, 8).<br>• Data QA: summary count equals listable partners (AC 8). |
-| portal (backend) | • Integration tests: `comphet_genes` in the list, `has_comphet` aggregation and filter, partner filter alone returns exactly the partners of the variant, with `symbol` exactly those of the gene; it also narrows count and aggregations; unknown locus returns no row (AC 2, 3, 4). |
-| portal (frontend) | • Vitest: cell rendering (several genes, empty), trio helper (trio, duo, solo), click opens a new query with both pills (AC 2, 3, 5, 6). |
+| portal (backend) | • Integration tests: `comphet_genes` in the list, `has_comphet` aggregation and filter, partner filter alone returns exactly the partners of the variant, with `symbol` exactly those of the gene; it also narrows count and aggregations; a `locus_id` with no pair returns no row (AC 2, 3, 4). |
+| portal (frontend) | • Vitest: cell rendering (several genes, empty), trio helper (trio, duo, solo), click opens a new query with both pills, the partner pill sends the `locus_id` and shows the locus (AC 2, 3, 5, 6). |
 | QA (manual) | • One trio and one duo on QA: counts, click results, candidate wording (AC 2 to 6).<br>• One real case compared with QLIN, shared with the geneticists (story risk). |
 
 ## Risks and coverage
@@ -93,6 +93,7 @@ No feature flag and no backfill: cases imported before step 2 have no compound h
 |---|---|
 | etl | • **Gene field:** which VEP field (symbol or gene id) slivar puts in `slivar_comphet`, and whether it matches the symbols Radiant shows. Check on a real VCF in task 1.<br>• **Sample names:** check that the slivar sample names are the aliquots the pedigree maps. |
 | portal (backend) | • **`comphet_genes` shape:** no query reads an ARRAY<STRUCT> column today. Check in task 3 that the StarRocks driver returns it as JSON the existing array type can read. Fallback: two parallel arrays (genes, counts). |
+| portal (frontend) | • **Saved filters:** the partner pill shows the locus only if a saved filter keeps the pill's display override. Otherwise a reloaded filter shows the raw `locus_id`. Check in task 5. |
 | story / product | • **Reviewer:** TBD. The story is not ready for the sprint without one.<br>• **Frequency filters in slivar** (open question in the story, for the bioinfo team).<br>• **Facet values:** boolean (story) or none / confirmed / candidate? |
 
 ## Approval
