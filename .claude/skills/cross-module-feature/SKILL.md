@@ -34,7 +34,7 @@ The usual order is ETL (schema, data) → portal backend → frontend → MCP. F
 
 ## 4. Check both sides of each boundary
 
-For every boundary that the spec changes (StarRocks tables/columns, enum values, API endpoints/fields), check that the writer and the reader agree: column names and types in the DDL vs the backend query, enum values across `etl/radiant/data_qa/macros/dictionaries.sql` ↔ `portal/backend/internal/repository/starrocks/facets.go` ↔ `portal/frontend/translations`, and API fields in `swagger.yaml` vs the consumers. List any mismatch to the user.
+For every boundary item that the spec changes (StarRocks tables/columns, enum values, API endpoints/fields), run the `impact` skill on the branches and check that the writer and every reader agree, including the silent ones (DDL copies in the portal's test data, MCP prompts, the ETL's hand-written API client). List any mismatch to the user.
 
 ## 5. PRs
 

@@ -16,6 +16,7 @@ Do not write code. Do not create branches. Do not commit unless the user asks.
 - Run `make status`. Do not assume that a module is checked out.
 - Read the `CLAUDE.md` of each module that the feature can touch.
 - Read `docs/architecture/overview.md`.
+- For each StarRocks table/column, enum value or API endpoint/field the feature changes, run the `impact` skill to find every reader, including the silent ones. Use it to fill **Modules impacted**, **Merge and rollout order** and **Risks and coverage**.
 - Search for existing work first: the code that already does part of the feature, and the data models that exist but are not used. Use `grep`.
 - If the scope is not clear, use up to 3 Explore agents in parallel, one per module. Ask each agent for `file:line` and short quotes, not for opinions.
 - **Before you cite an agent result, check it yourself** (`sed -n`, `grep`). Agents give wrong paths and wrong line numbers.

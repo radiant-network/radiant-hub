@@ -30,7 +30,7 @@ See `docs/architecture/overview.md` for the diagram. The boundaries:
 - **Nextflow pipelines**: the `bioinfo/*` pipelines write the files (VCFs, QC metrics) that the ETL reads. The ETL pins each revision in `etl/Dockerfile.nextflow.launcher` (`*_PIPELINE_REV`); for SNV and CNV, `ANNOTATION_PIPELINE` in `etl/radiant/tasks/nextflow/{,cnv/}batch.py` repeats it. Bump both together.
 - **Identity**: Keycloak issues the JWTs used by the portal, the MCP, and StarRocks itself (the MCP passes the JWT through).
 
-Most cross-module bugs happen at these boundaries. When a change touches one, check both sides (writer and readers) in the same piece of work.
+Most cross-module bugs happen at these boundaries. When a change touches one, check both sides (writer and readers) in the same piece of work. The dependencies are not documented: they are computed from the code. To find every reader of an item, or the impacts of changing it, use the `impact` skill.
 
 ## Stories
 
