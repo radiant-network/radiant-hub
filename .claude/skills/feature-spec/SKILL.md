@@ -59,11 +59,11 @@ Do not write code. Do not create branches. Do not commit unless the user asks.
 - **No appendices, no Linked PRs, no extra sections.** Content that the template has no section for usually does not belong in the spec.
 - Section by section:
   - **Story:** link, reviewer, status, one branch `feat/rad-xxxx-<slug>` for all repos.
-  - **Chosen approach:** a one-line **Summary**, then a nested Markdown bullet list, **not a table**: one bold top-level bullet per module (`- **portal (backend)**`), its items nested under it, sub-items one level deeper. Per module: the approach and the integration point (the existing component it plugs into, by name). No diagram or image in this section. No rejected alternatives section.
+  - **Chosen approach:** a one-line **Summary**, then a module table (see section 4). Per module: the approach and the integration point (the existing component it plugs into, by name). No rejected alternatives section.
   - **Modules impacted:** one row per module. The areas (components, not file paths) in one cell, comma-separated.
   - **Tasks:** the template table. One task = one intent = usually one PR. Code, IaC and docs only. Operations (deploy, scripts to run, account setup, QA checks, first load) go in the rollout order. Add a Labels or UX task when the story needs one, or say why not in one line.
-  - **Boundaries:** a change to a StarRocks table or column, an enum value, or an API endpoint or field goes under its module in **Chosen approach**, with its readers and its migration or compatibility note.
-  - **Pipeline job input:** when the story adds a job, give its run config under its module in **Chosen approach**: each param with its type, whether it is required, its use, and one example. Follow the param names of the existing jobs.
+  - **Boundaries:** a change to a StarRocks table or column, an enum value, or an API endpoint or field goes in the module row of **Chosen approach**, with its readers and its migration or compatibility note.
+  - **Pipeline job input:** when the story adds a job, give its run config in the module row of **Chosen approach**: each param with its type, whether it is required, its use, and one example. Follow the param names of the existing jobs.
   - **Merge and rollout order:** a short numbered list, as in the template. For each step: what, and what breaks if it is skipped. Then one line on backfill and feature flags.
   - **Test strategy:** module table `| Module | How the story is proven |`. Tag each bullet with the AC it proves. Add a `QA (manual)` row for the checks by hand.
   - **Risks and coverage:** one row per business risk of the story. If the story checks none, say so in one line.
@@ -73,7 +73,7 @@ Do not write code. Do not create branches. Do not commit unless the user asks.
 ## 4. Write for humans
 
 - Short sentences, active voice, one idea per sentence (ASD-STE100 style).
-- **Scope lists by module, in tables** (all sections except **Chosen approach**, which uses a bullet list). Prefer a two-column table over a bullet list: the left column is the module (`portal (backend)`, `etl`, `portal (frontend)`, `mcp`, `infra`, `bioinfo`), the right column holds the bullets for that module.
+- **Scope lists by module, in tables.** Prefer a two-column table over a bullet list: the left column is the module (`portal (backend)`, `etl`, `portal (frontend)`, `mcp`, `infra`, `bioinfo`), the right column holds the bullets for that module.
   - In a cell, write `• item<br>`, and `&nbsp;&nbsp;◦ sub-item<br>` for a sub-item. Bold the label at the start of a bullet (`• **Storage:** …`).
   - Omit a module row when it has nothing to say.
   - Check that every row has the same number of columns. A `|` inside a cell breaks the table.
@@ -87,7 +87,7 @@ Do not write code. Do not create branches. Do not commit unless the user asks.
   - "facts" dump tables;
   - negative justifications ("X cannot be used because …"). Write what the plan does, not what it does not use;
   - concerns that do not matter at the real scale (for example the cost of reading a small table).
-- Diagrams are optional. Add at most one, only when a flow across systems is hard to follow in words, and never in **Chosen approach**. Validate it before you write it:
+- Diagrams are optional. Add at most one, only when a flow across systems is hard to follow in words. Validate it before you write it:
 
   ```sh
   npx -y @mermaid-js/mermaid-cli -i d1.mmd -o d1.svg
@@ -105,7 +105,7 @@ Do not write code. Do not create branches. Do not commit unless the user asks.
 
 ## 6. Record the decisions
 
-- When the user decides, write the decision under the module in **Chosen approach**. Drop the options that are not chosen; mention one only when it stays a fallback ("It stays the fallback if …").
+- When the user decides, write the decision into the row of the module in **Chosen approach**. Drop the options that are not chosen; mention one only when it stays a fallback ("It stays the fallback if …").
 - When all the decisions are made, remove `## Options considered` and every option code (A4, B1, …). Check:
 
   ```sh
