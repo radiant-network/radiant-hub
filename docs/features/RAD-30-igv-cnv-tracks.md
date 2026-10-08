@@ -254,7 +254,7 @@ Green: new. Grey: existing, unchanged. Blue: existing optional branches of `impo
 
 ```mermaid
 flowchart LR
-  OPS(["operator · manual run<br/><i>{&quot;import_igv_tracks&quot;: true}</i>"])
+  OPS(["operator · manual run<br/><i>import_igv_tracks = true</i>"])
 
   subgraph IOD["radiant-import-open-data · manual"]
     direction TB
