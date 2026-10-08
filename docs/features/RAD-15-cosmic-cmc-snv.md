@@ -101,7 +101,7 @@ The story checks no particular business risk. The tests above still pin the Fran
 
 | Date | Need found | Option A: new ticket (link) | Option B: re-approval (by whom, when) |
 |---|---|---|---|
-| … | … | … | … |
+| 2026-10-08 | The somatic occurrence slider and interpretation form (RAD-20) show COSMIC; they read the somatic `expanded` endpoint, which did not expose the CMC fields. Outside the frozen scope ("no change to the side panel") | [RAD-20](https://ferlab-crsj.atlassian.net/browse/RAD-20): its acceptance criteria already cover the slider and form (somatic only); backend part in radiant-network/radiant-portal#1727 (code) and #1728 (swagger and clients) | — |
 
 ## Linked PRs
 
