@@ -55,7 +55,7 @@ New columns along the pipeline (`+` = added, `all/aff/not` = all, affected, not 
 - **Backfill:** a new optional branch in `reannotate_open_data`.
   - It reruns the per-part frequency queries for every (tenant, part), then the tenant roll-ups, before the existing `snv__variant` and variant-part rebuild.
   - The (tenant, part) list comes from the listing the DAG already uses for the variant parts.
-  - **Run config:** new param `recompute_frequencies` (boolean, optional, default `false`), used with the existing `force_reannotation` (boolean). Example: `{"force_reannotation": true, "recompute_frequencies": true}`.
+  - **Run config:** new param `recompute_frequencies` (boolean, optional, default `false`). It also opens the `snv_variant` and `cnv_occurrence` rebuilds, so `force_reannotation` is not needed. Example: `{"recompute_frequencies": true}`.
   - Reusable for any later change to the frequency SQL.
   - Until it runs, `hom` is 0 for existing rows and `af` is too low, with no error.
 
@@ -94,7 +94,7 @@ No UX task and no Labels task: the story has no UI change. The OpenAPI field des
 ## Merge and rollout order
 
 1. etl: merge task 1. Run the migration on the base database and on every tenant database (QA, then prod) **before** the DAGs are deployed. Otherwise the positional inserts fail and every `import_part` breaks.
-2. etl: deploy task 2, then run `reannotate_open_data` with `force_reannotation` and `recompute_frequencies` set to `true` (QA, then prod). Until then, `af` is too low for existing variants.
+2. etl: deploy task 2, then run `reannotate_open_data` with `{"recompute_frequencies": true}` (QA, then prod). The same run backfills RAD-57. Until then, `af` is too low for existing variants.
 3. portal backend: deploy task 3 after step 1 (otherwise every SNV occurrence query fails on an unknown column) and after step 2 (otherwise the API serves a wrong `af`).
 4. frontend and mcp: nothing to deploy. The TS client is regenerated in task 3; the MCP pin is not bumped.
 
@@ -144,4 +144,4 @@ No feature flag. Later imports compute `hom` and `af` as part of `import_part`.
 
 | Date | Need found | Option A: new ticket (link) | Option B: re-approval (by whom, when) |
 |---|---|---|---|
-| … | … | … | … |
+| 2026-10-08 | Task 2: `force_reannotation` would also rerun the staging-variant re-annotation and the consequences, which the backfill does not need. `recompute_frequencies` opens the `snv_variant` rebuild by itself, and the CNV rebuild too (`nb_snv` counts `snv__variant` rows, and RAD-57 changed that row set and the thresholds). | — | User, 2026-10-08 |
