@@ -14,7 +14,7 @@
 
 ## Chosen approach
 
-**Summary:** the IGV endpoint `/{tenant}/igv/{case_id}` returns the CNV, Seg, BAF, ROH and capture targets files of the case next to the alignments, already presigned and named. The frontend loads each track on its own, so a failing track does not block the others, and adds a Tracks menu for the public reference tracks. A new ETL job builds the public tracks, as Qlin does, into a Radiant public bucket.
+**Summary:** the IGV endpoint `/{tenant}/igv/{case_id}` returns the CNV, Seg, BAF, ROH and capture targets files of the case next to the alignments, already presigned and named. The frontend loads each track on its own, so a failing track does not block the others, and adds a Tracks menu for the public reference tracks. A new ETL job builds the public tracks, as Qlin does, into a private bucket; the same endpoint returns them presigned.
 
 - **portal (backend)**
   - **Today:** the endpoint keeps only `alignment` / `cram`+`crai` output documents. It names them `Reads: <sample> <role>` (germline) or `Reads: <sample> <histology>` (somatic), proband or tumor first. The response has one field, `alignment`.
@@ -35,6 +35,10 @@
   - **Order:** members in the existing order (proband or tumor first). The frontend applies the per-member order of the story.
   - **Access:** same as today: tenant action `can_search_case`, StarRocks read under the existing connection, every URL presigned. No change (see frozen scope).
   - **Contract:** new arrays next to `alignment` in `IGVTracks`: `cnv`, `seg`, `baf`, `roh`, `capture_targets` (at most one item). Same item shape as `alignment` (`IGVTrackEnriched`); bw and bed items have no index URL. New field `sequencing_experiment_id` on each item, so the frontend groups the tracks of one sample (a tumor and its normal have the same patient). Additive; OpenAPI and TS/Python clients regenerated.
+  - **Public tracks:** new field `public_tracks`: one entry per public file (11), keyed by a fixed file id (e.g. `clinvar`, `dgv`, `clingen_region`), with presigned `url` and `indexURL` and their expiry, like the case tracks.
+    - The backend builds each URL from a new setting, the S3 prefix of the tracks (env var, like `S3_PRESIGNED_URL_EXPIRE`), plus the file name that the ETL job writes. The ETL owns the file names; the backend list must match them.
+    - Presigning is a local signature, with no S3 call. The URLs expire like the CRAM URLs (60 min by default).
+    - When the setting is empty, `public_tracks` is empty and the Tracks menu shows nothing. This keeps the backend deployable before the bucket exists.
 - **portal (frontend)**
   - **Case tracks:** per member, in this order: CNVs, Reads, Seg, BAF, ROH. The capture targets track sits under the RefSeq gene track.
   - **Formats:** CNVs as a [variant track](https://igv.org/doc/igvjs/tracks/Variant-Track/). Seg and BAF as [wig tracks](https://igv.org/doc/igvjs/tracks/Wig-Track/) (bigWig). ROH and targets as [annotation tracks](https://igv.org/doc/igvjs/tracks/Annotation-Track/) (BED).
@@ -42,48 +46,49 @@
   - **Load:** the browser opens with the reference and gene tracks, then loads each case track with `loadTrack`, which returns a promise per track ([Browser API](https://igv.org/doc/igvjs/Browser-API/)). A rejected load is listed in a message that names the track; the others stay.
   - **Large families:** the case tracks load one after the other, not all at once, and IGV keeps opening on the ±100 bp window around the variant. Every member's tracks show by default, as AC1 asks.
   - **chrM:** when the locus is on chrM, IGV opens on a small window and a message says why. The window size is set during the implementation, on a deep QA case.
-  - **Tracks menu:** a menu in the IGV dialog switches the public tracks on and off (`loadTrack` / `removeTrackByName`). The dialog receives its context (SNV or CNV), which sets the list and the defaults of the story. The track URLs come from a new portal UI setting (the public tracks base URL), next to `API_HOST`. ClinGen tracks are colored by evidence level with `colorBy` on the GFF3 attribute ([Annotation Track](https://igv.org/doc/igvjs/tracks/Annotation-Track/)).
+  - **Tracks menu:** a menu in the IGV dialog switches the public tracks on and off (`loadTrack` / `removeTrackByName`). The dialog receives its context (SNV or CNV), which sets the list and the defaults of the story. The track URLs come from `public_tracks` in the IGV response; the frontend keeps the names, contexts, defaults and colors, and maps them to the file ids (ClinGen gene and region files give two tracks each). ClinGen tracks are colored by evidence level with `colorBy` on the GFF3 attribute ([Annotation Track](https://igv.org/doc/igvjs/tracks/Annotation-Track/)).
   - **Reference genome:** no change. Radiant already uses `hg38_1kg` ("Human (hg38 1kg/GATK)") and the igv.org RefSeq track, the same baseline as Qlin.
 - **etl**
   - **Job:** new DAG `radiant-import-igv-tracks`, a port of Qlin's `etl_import_igv`. It downloads the 11 public files (ClinVar, ClinVar SVs, DGV, gnomAD SV and CNV v4.1, ClinGen gene and region dosage, segmental duplications, RepeatMasker, simple repeats, self chain). It converts ClinGen and the UCSC tables to GFF3, sorts, bgzips and tabix-indexes them, and writes each file and its `.tbi` under one prefix.
   - **When:** once per environment, not per case: the files are the same for every case. No schedule, like Qlin's DAG (`schedule=None`). Rerun by hand to take a new upstream release.
   - **Entry point:** `import_open_data` gets an optional branch that triggers the DAG, next to the COSMIC branches and with the same mechanism. The IGV DAG also runs alone (e.g. to retry a failed download).
     - New param `import_igv_tracks` (boolean, optional, default `false`). Off by default because `reannotate_open_data` triggers `import_open_data`, and must not rebuild the files each time. Example: `{"import_igv_tracks": true}`.
-  - **Run:** the conversion runs as a task on the radiant-operator image (ECS or Kubernetes), like the COSMIC normalize task. The image installs only the Debian `bcftools` package today, which does not bring `bgzip` and `tabix`. Task 5 adds the Debian [`tabix`](https://packages.debian.org/bookworm/amd64/tabix/filelist) package, which holds both.
-  - **Run config (IGV DAG):** `igv_tracks_prefix` (string, optional; S3 prefix to write to; defaults to an environment variable, like `reference_fasta_filepath`). Example: `{"igv_tracks_prefix": "s3://<public bucket>/igv/"}`. A rerun replaces the files with the latest upstream versions.
-  - **Access:** the DAG writes with the ETL's own AWS role. The browser reads the files anonymously.
+  - **Run:** the conversion runs as a task on the radiant-operator image (ECS or Kubernetes), like the COSMIC normalize task. The image installs only the Debian `bcftools` package today, which does not bring `bgzip` and `tabix`. Task 6 adds the Debian [`tabix`](https://packages.debian.org/bookworm/amd64/tabix/filelist) package, which holds both.
+  - **Run config (IGV DAG):** `igv_tracks_prefix` (string, optional; S3 prefix to write to; defaults to an environment variable, like `reference_fasta_filepath`). Example: `{"igv_tracks_prefix": "s3://<tracks bucket>/igv/"}`. A rerun replaces the files with the latest upstream versions.
+  - **Access:** the DAG writes with the ETL's own AWS role. The browser reads the files through URLs that the portal API presigns with its own role.
 - **infra**
-  - **Bucket:** a public bucket per environment (QA, prod), read-only to anyone on the `igv/` prefix, writable by the ETL role.
+  - **Bucket:** private, per environment (QA, prod). The ETL role writes the `igv/` prefix; the portal API role reads it. No public access.
   - **CORS:** `GET` / `HEAD` from the portal origin, with the range headers exposed, as the existing portal CORS rule of the QA buckets.
-  - **Portal UI setting:** the base URL of the bucket in the portal UI deployment.
+  - **Portal API setting:** the tracks prefix in the portal API deployment.
 
 ## Modules impacted
 
 | Module | Area | Kind of change |
 |---|---|---|
-| portal (backend) | IGV repository query and track builder, IGV response type, OpenAPI spec, generated TS and Python clients | modified |
-| portal (frontend) | IGV dialog and container (track loading, ordering, colors, errors, chrM), new Tracks menu, public tracks config, EN/FR translations | new / modified |
+| portal (backend) | IGV repository query and track builder, IGV response type, public tracks setting and presigning, OpenAPI spec, generated TS and Python clients | new / modified |
+| portal (frontend) | IGV dialog and container (track loading, ordering, colors, errors, chrM), new Tracks menu and its track config, EN/FR translations | new / modified |
 | etl | public IGV tracks import DAG and its conversion task, new branch in `import_open_data`, DAG tests, docs | new / modified |
-| infra | public tracks bucket with CORS and write access for the ETL role (QA, prod), portal UI setting | new / modified |
+| infra | tracks bucket with CORS, ETL write and API read access (QA, prod), portal API setting | new / modified |
 
 ## Tasks
 
 | # | Task | Component | Content | Depends on | Shippable alone? |
 |---|---|---|---|---|---|
 | 1 | Case file tracks in the IGV API | portal (backend) | CNV, Seg, BAF, ROH and targets selection, names, new arrays and `sequencing_experiment_id`, OpenAPI + clients, integration tests | — | yes (additive) |
-| 2 | Labels | portal (frontend) | EN/FR: track prefixes, Tracks menu entries, failed-track message, chrM message | — | yes |
-| 3 | Case tracks in IGV | portal (frontend) | Per-member order, targets under genes, CNV colors, one-by-one load with failure message, chrM window | Tasks 1, 2 | yes once 1 is deployed |
-| 4 | Public tracks bucket | infra | Bucket with public read on `igv/`, CORS, ETL role write access (QA, prod); base URL setting in the portal UI deployment | — | yes (no reader yet) |
-| 5 | Public tracks import | etl | DAG `radiant-import-igv-tracks`, conversion task on the radiant-operator image (plus the `tabix` package), `import_igv_tracks` branch in `import_open_data`, DAG tests, docs | — | yes (manual trigger) |
-| 6 | Tracks menu | portal (frontend) | Menu, SNV/CNV defaults, ClinGen colors, base URL setting | Tasks 2, 4, 5 | yes once 4 and 5 run |
-| 7 | UX (tentative) | UX | Place of the Tracks menu and of the failed-track message in the IGV dialog. Kept only if the reuse of an existing menu component is not enough | — | yes (no code) |
+| 2 | Public tracks in the IGV API | portal (backend) | `public_tracks` field, tracks prefix setting, presigning, OpenAPI + clients, tests | — | yes (empty until the setting is set) |
+| 3 | Labels | portal (frontend) | EN/FR: track prefixes, Tracks menu entries, failed-track message, chrM message | — | yes |
+| 4 | Case tracks in IGV | portal (frontend) | Per-member order, targets under genes, CNV colors, one-by-one load with failure message, chrM window | Tasks 1, 3 | yes once 1 is deployed |
+| 5 | Tracks bucket | infra | Private bucket, CORS, ETL role write and API role read on `igv/` (QA, prod); tracks prefix setting in the portal API deployment | — | yes (no reader yet) |
+| 6 | Public tracks import | etl | DAG `radiant-import-igv-tracks`, conversion task on the radiant-operator image (plus the `tabix` package), `import_igv_tracks` branch in `import_open_data`, DAG tests, docs | — | yes (manual trigger) |
+| 7 | Tracks menu | portal (frontend) | Menu, SNV/CNV defaults, ClinGen colors, mapping of the file ids | Tasks 2, 3 | yes (empty until 5 and 6 run) |
+| 8 | UX (tentative) | UX | Place of the Tracks menu and of the failed-track message in the IGV dialog. Kept only if the reuse of an existing menu component is not enough | — | yes (no code) |
 
 ## Merge and rollout order
 
-1. infra: task 4 (QA, then prod). Without the bucket, the ETL job has nowhere to write.
-2. etl: deploy task 5, then run `import_open_data` with `{"import_igv_tracks": true}` once per environment. Without it, the Tracks menu loads nothing.
-3. portal backend: task 1. The frontend tasks read its new fields.
-4. portal frontend: tasks 2 and 3 after step 3; task 6 after steps 1 and 2, in each environment.
+1. infra: task 5 (QA, then prod). Without the bucket, the ETL job has nowhere to write; without the read grant, the presigned URLs return 403.
+2. etl: deploy task 6, then run `import_open_data` with `{"import_igv_tracks": true}` once per environment. Without it, the presigned URLs point to missing files.
+3. portal backend: tasks 1 and 2, then set the tracks prefix setting after step 2. Until then, `public_tracks` is empty.
+4. portal frontend: tasks 3, 4 and 7 after step 3, in each environment.
 
 No migration, no backfill, no feature flag. Files that a case does not have give no track. The public tracks are refreshed by a manual rerun of the job.
 
@@ -98,7 +103,7 @@ No migration, no backfill, no feature flag. Files that a case does not have give
 
 ## Risks and coverage
 
-The story checks no particular business risk. The plan adds new presigned file links behind `can_search_case` only, like the existing CRAM links. The story moves that gap to a separate ticket (see frozen scope).
+The story checks no particular business risk. The plan adds new presigned file links behind `can_search_case` only, like the existing CRAM links. The public tracks hold public data only, so presigning them behind the same check adds no exposure. The story moves that gap to a separate ticket (see frozen scope).
 
 ## Frozen scope
 
@@ -114,9 +119,9 @@ The story checks no particular business risk. The plan adds new presigned file l
 | Module | Questions |
 |---|---|
 | story / product | • **Source of the case files:** the Qlin import of SJRA-1963 registers them; the ETL does not, and no seeds or fixtures hold any. Are they on QA today? Check that their names end with the suffixes above: a file with another name shows no track, with no error. |
-| infra | • **Bucket:** a new bucket, or a public `igv/` prefix in an existing Radiant bucket? Proposal: a new bucket, so the public read policy stays apart from the case data. |
+| infra | • **Bucket:** a new bucket, or an `igv/` prefix in a bucket that the portal API already reads (with its CORS rule)? Proposal: the existing bucket, since nothing is public any more. |
 | portal (backend) | • **Somatic CNVs:** does a tumor-normal case hold one `scnv` VCF per sample, or one for the pair? Check on a QA case. |
-| portal (frontend) | • **CNV color on `ALT`:** check that igv.js 3.7.0 accepts a color function on a variant track. Fallback: color on an INFO field added by the pipeline.<br>• **UX task (task 7):** needed? |
+| portal (frontend) | • **CNV color on `ALT`:** check that igv.js 3.7.0 accepts a color function on a variant track. Fallback: color on an INFO field added by the pipeline.<br>• **UX task (task 8):** needed? |
 
 ## Approval
 
@@ -138,7 +143,7 @@ The story checks no particular business risk. The plan adds new presigned file l
 
 ### A. Sample `GET /{tenant}/igv/{case_id}` response
 
-Germline trio, shortened to the proband (`S123`) and the mother (`S124`). The mother has no Seg file, so she has no `seg` item. Presigned URLs are shortened. New fields are `sequencing_experiment_id` and the arrays after `alignment`.
+Germline trio, shortened to the proband (`S123`) and the mother (`S124`). The mother has no Seg file, so she has no `seg` item. Presigned URLs are shortened. New fields are `sequencing_experiment_id`, the arrays after `alignment`, and `public_tracks` (shortened to 2 of its 11 entries).
 
 ```json
 {
@@ -244,7 +249,21 @@ Germline trio, shortened to the proband (`S123`) and the mother (`S124`). The mo
       "indexURLExpireAt": 0,
       "name": "Capture targets"
     }
-  ]
+  ],
+  "public_tracks": {
+    "clinvar": {
+      "url": "https://<tracks bucket>.s3.amazonaws.com/igv/clinvar.vcf.gz?X-Amz-Signature=…",
+      "urlExpireAt": 1791480000,
+      "indexURL": "https://<tracks bucket>.s3.amazonaws.com/igv/clinvar.vcf.gz.tbi?X-Amz-Signature=…",
+      "indexURLExpireAt": 1791480000
+    },
+    "clingen_region": {
+      "url": "https://<tracks bucket>.s3.amazonaws.com/igv/ClinGen_region_curation_list_GRCh38.sorted.gff3.gz?X-Amz-Signature=…",
+      "urlExpireAt": 1791480000,
+      "indexURL": "https://<tracks bucket>.s3.amazonaws.com/igv/ClinGen_region_curation_list_GRCh38.sorted.gff3.gz.tbi?X-Amz-Signature=…",
+      "indexURLExpireAt": 1791480000
+    }
+  }
 }
 ```
 
@@ -283,15 +302,17 @@ flowchart LR
     I2 --> I3["write files + .tbi<br/><i>igv_tracks_prefix</i>"]
   end
 
-  BUCKET[("public bucket<br/>igv/")]
-  UI["portal · IGV Tracks menu<br/><i>browser, anonymous read</i>"]
+  BUCKET[("tracks bucket · private<br/>igv/")]
+  API["portal API · IGV endpoint<br/><i>public_tracks, presigned</i>"]
+  UI["portal · IGV Tracks menu<br/><i>browser reads presigned URLs</i>"]
 
   OPS ==> S
   B3 -. trigger .-> C1
   B4 -. trigger .-> M1
   B5 == trigger ==> I1
   I3 ==> BUCKET
-  BUCKET ==> UI
+  BUCKET -. presign .-> API
+  API ==> UI
 
   classDef existing fill:#f4f5f7,stroke:#9aa1ab,color:#2b2f36
   classDef branch fill:#eef2ff,stroke:#6b7bd6,color:#2b2f36
@@ -300,7 +321,7 @@ flowchart LR
 
   class S,T1,T2,T3,C1,M1,M2 existing
   class B1,B2,B3,B4 branch
-  class OPS,B5,I1,I2,I3,UI new
+  class OPS,B5,I1,I2,I3,API,UI new
   class BUCKET store
   style IGV fill:#f3fbf6,stroke:#1f9d55,stroke-width:2px
   style IOD fill:#fafbfc,stroke:#9aa1ab,stroke-width:1.5px
@@ -322,7 +343,7 @@ flowchart LR
 | ROH | each member | `igv` / `bed`, `*.roh.bed` | Qlin case file, imported as `igv` (SJRA-1963) |
 | Capture targets | once, proband or tumor | `igv` / `bed`, `*_targets.bed` | Qlin case file, imported as `igv` (SJRA-1963) |
 
-**Public tracks** (Tracks menu, built by `radiant-import-igv-tracks` into the public bucket)
+**Public tracks** (Tracks menu, built by `radiant-import-igv-tracks` into the tracks bucket, returned presigned in `public_tracks`)
 
 | Track | Context | On by default | File | Upstream source |
 |---|---|---|---|---|
