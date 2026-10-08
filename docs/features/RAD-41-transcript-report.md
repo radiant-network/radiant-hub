@@ -13,13 +13,10 @@
 
 | Module | Approach |
 |---|---|
-| portal (backend) | • **Report object:** one Go struct per locus, tenant-independent superset of what any report can show: variant (hgvsg, rsnumber, ClinVar id, gnomAD ac/an/af/hom), occurrence (zygosity, parental origin, parent zygosities, AD), genes with OMIM, all Ensembl transcripts with the MANE pair (RefSeq NM, exon, HGVSc, AA change, REVEL, CADD), interpretation with PubMed, case context (MRN, submitter sample id, proband, genome build). Reads are batched for N loci.<br>• **JSON endpoint:** `GET /{tenant}/occurrences/germline/snv/{case_id}/{seq_id}/{task_id}/{locus_id}/report` returns the raw object. Kept deployed: contract for template authors, QA diff against the QLIN report.<br>• **XLSX endpoint:** `GET /{tenant}/occurrences/germline/snv/{case_id}/{seq_id}/{task_id}/reports/transcripts?locus_ids=a,b,c`, 1 to 100 ids, action `can_search_case`, one sheet per locus named after `hgvsg`, `Content-Disposition` file name `<MRN>_<case id>_<UTC timestamp>.xlsx` (the QLIN list endpoint rule, no rsnumber). 400 outside the cap, 404 when a locus is not an occurrence of the case.<br>• **Rows:** one row per Ensembl transcript, MANE Select first, RefSeq NM taken from the MANE pair, RefSeq-only genes keep their row.<br>• **Template:** an Excel file per tenant and report type (`transcripts_germline_<tenant>.xlsx`) in `REPORT_TEMPLATE_DIR`, same loader shape as the notification emails. Row 1 is the header styled in Excel, row 2 the placeholder row repeated per transcript, cells hold Go text/template expressions over the report object with a `**bold**` / `_italic_` run markup, sheet tab name templated. Loaded at boot: locate the repeat row, parse every expression, dry-run on a sample object; a bad file takes that tenant's report down only, reported in the status endpoint, request answers an explicit error. Formulas, merged cells and conditional formatting in the repeat row are rejected.<br>• **Rendering:** excelize. Copy the template sheet per locus, duplicate the placeholder row per transcript, fill cells as rich text runs with the template cell's font. Static styling (widths, fills, wrap, heights) comes from the file untouched.<br>• **Helpers:** the clin-arranger formatters (zygosity and parental origin, gnomAD, ClinVar, OMIM and PMID, MANE, classification, citations) ported to Go and registered for the templates, with their test cases. |
+| portal (backend) | • **Report object:** one Go struct per locus, tenant-independent superset of what any report can show: variant (hgvsg, rsnumber, ClinVar id, gnomAD ac/an/af/hom), occurrence (zygosity, parental origin, parent zygosities, AD), genes with OMIM, all Ensembl transcripts with the MANE pair (RefSeq NM, exon, HGVSc, AA change, REVEL, CADD), interpretation with PubMed, case context (MRN, submitter sample id, proband, genome build). Reads are batched for N loci.<br>• **JSON endpoint:** `GET /{tenant}/occurrences/germline/snv/{case_id}/{seq_id}/{task_id}/{locus_id}/report` returns the raw object. Kept deployed: contract for template authors, QA diff against the QLIN report.<br>• **XLSX endpoint:** `GET /{tenant}/occurrences/germline/snv/{case_id}/{seq_id}/{task_id}/reports/transcripts?locus_ids=a,b,c`, 1 to 100 ids, action `can_search_case`, one sheet per locus named after `hgvsg`, `Content-Disposition` file name `<MRN>_<case id>_<UTC timestamp>.xlsx` (the QLIN list endpoint rule, no rsnumber). 400 outside the cap, 404 when a locus is not an occurrence of the case.<br>• **Rows:** one row per Ensembl transcript, MANE Select first, RefSeq NM taken from the MANE pair, RefSeq-only genes keep their row.<br>• **Template:** an Excel file per tenant and report type (`transcripts_germline_<tenant>.xlsx`) in `REPORT_TEMPLATE_DIR`, same loader shape as the notification emails. Row 1 is the header styled in Excel, row 2 the placeholder row repeated per transcript, cells hold Go text/template expressions over the report object with a `**bold**` / `_italic_` run markup, sheet tab name templated. Loaded at boot: locate the repeat row, parse every expression, dry-run on a sample object; a bad file takes that tenant's report down only, reported in the status endpoint, request answers an explicit error. Formulas, merged cells and conditional formatting in the repeat row are rejected.<br>• **Rendering:** excelize. Copy the template sheet per locus, duplicate the placeholder row per transcript, fill cells as rich text runs with the template cell's font. Static styling (widths, fills, wrap, heights) comes from the file untouched.<br>• **Helpers:** the clin-arranger formatters (zygosity and parental origin, gnomAD, ClinVar, OMIM and PMID, MANE, classification, citations) ported to Go and registered for the templates, with their test cases.<br>• **Boundaries:** the two endpoints are additive; readers are the frontend (TS client) and the MCP (Python client, not bumped). New StarRocks readers, no DDL change: `snv__consequence` (`source`, `transcript_version`, `mane_select`, `mane_pair_transcript_id`), `gnomad_genomes_v3` (`ac`, `an`, `hom`), `snv__variant.clinvar_name`, `omim_gene_panel`, the parental columns of `germline__snv__occurrence`; renaming any of them breaks the report. New config `REPORT_TEMPLATE_DIR`: a missing directory means no report for any tenant, the API still boots. New status field `report_templates`, same shape as `notification_templates`, additive. |
 | portal (frontend) | • **Proxy:** the `/api/*` proxy passes a binary response through with its `Content-Type` and `Content-Disposition` instead of re-encoding JSON.<br>• **Button:** "Report" on the germline occurrence sheet, current variant only, downloads the xlsx through the proxy, file name from the header. Error toast when the tenant has no template.<br>• **Labels:** EN/FR button, tooltip, error. |
-| etl | • None. |
 | mcp | • Python client regenerated, not bumped. |
 | infra | • Template mount: ConfigMap for `qlin` (QA, prod), compose volume for localstack. |
-
-Rejected alternatives: a YAML template engine (own DSL, styles limited to the schema), a Go-only layout with a label file (every layout change is a release), and a first slice with the qlin layout hardcoded in Go before the template engine (thrown away by the template slice; the JSON endpoint already proves the values). The Excel file keeps the exact styling and lets the CQGC own the look.
 
 ## Modules impacted
 
@@ -28,7 +25,6 @@ Rejected alternatives: a YAML template engine (own DSL, styles limited to the sc
 | portal (backend) | new report package (object, repositories, template loader, renderer, helpers), germline SNV occurrence routes and handlers, status endpoint, config, swagger and generated clients, test schema (`snv__consequence` gains `source`, `transcript_version`, `mane_pair_transcript_id`; `cosmic_mutation_set` added for RAD-42), golden fixtures | new / modified |
 | portal (frontend) | API proxy, germline occurrence sheet (action bar), download helper, translations | new / modified |
 | infra | template ConfigMap and mounts | new |
-| etl, mcp | none | — |
 
 ## Tasks
 
@@ -44,17 +40,6 @@ Jira sub-tasks (created 2026-10-07): task 1 [RAD-48](https://ferlab-crsj.atlassi
 
 Labels task: folded into task 5 (three strings, validated with the CQGC). UX task: none, the button reuses the sheet action bar; multi-select is a separate story.
 
-## Contract changes
-
-| Contract | Change | Writer | Readers | Migration / compatibility |
-|---|---|---|---|---|
-| API: germline SNV occurrences | Two new GET endpoints, `/{locus_id}/report` (JSON report object) and `/reports/transcripts?locus_ids=` (xlsx). Additive | portal backend | portal frontend (TS client), mcp (Python client, not bumped) | None |
-| StarRocks readers | New readers of `snv__consequence` (`source`, `transcript_version`, `mane_select`, `mane_pair_transcript_id`), `gnomad_genomes_v3` (`ac`, `an`, `hom`), `snv__variant.clinvar_name`, `omim_gene_panel`, `germline__snv__occurrence` parental columns. No DDL change | etl | portal backend (new) | Renaming these columns breaks the report |
-| Config | `REPORT_TEMPLATE_DIR`, directory of `transcripts_<type>_<tenant>.xlsx` files | infra | portal backend | Missing directory = no report for any tenant, API still boots |
-| Status endpoint | New field `report_templates`, same shape as `notification_templates` | portal backend | ops | Additive |
-
-`docs/contracts/portal-api.md` gets the two endpoints and `starrocks-schema.md` the new readers in the same change as task 1.
-
 ## Merge and rollout order
 
 1. portal backend: tasks 1 and 2. Nothing depends on them yet; without a mounted template the status endpoint reports no `qlin` template, nothing else changes.
@@ -67,9 +52,9 @@ No migration, no backfill, no feature flag.
 
 | Module | How the story is proven |
 |---|---|
-| portal (backend) | • Golden workbook tests on the arranger mock cases (germline G1 to G4): every cell, rich text fonts, widths, heights, sheet names, file name. Proves the layout and values ACs.<br>• Repository tests on a StarRocks fixture: twins, RefSeq-only gene, legacy null source, interpretation on one transcript only. Proves the rows and interpretation ACs.<br>• Handler tests: 1 and 100 ids pass, 0 and 101 answer 400, foreign locus 404, missing action 403, missing template error. Proves the endpoint ACs.<br>• Loader tests: missing directory, bad file, unknown field in a cell, unknown tenant, status field. |
-| portal (frontend) | • Vitest: proxy JSON vs binary, download helper reads the file name, button states and error toast. Proves the button and translation ACs. |
-| QA (manual) | • Open the same variant in QLIN and Radiant on QA, compare the two workbooks cell by cell for one HET maternal, one HOM, one de novo and one RefSeq-only case.<br>• Not automated: the look in Excel itself (fonts, wrapped heights), checked by eye on the QA diff. |
+| portal (backend) | • **AC1, AC2 (file name, sheet, layout, values):** golden workbook tests on the four germline arranger mock cases: every cell, rich text fonts, widths, heights, autofilter, sheet names, file name.<br>• **AC3, AC4 (rows, interpretation):** repository tests on a StarRocks fixture: twins, RefSeq-only gene, legacy null source, interpretation on one transcript only.<br>• **AC5 to AC8 (cap, 404, 403, missing template):** handler tests: 1 and 100 ids pass, 0 and 101 answer 400, foreign locus 404, missing action 403, missing template error.<br>• **AC8 (missing template):** loader tests: missing directory, bad file, unknown field in a cell, unknown tenant, status field. |
+| portal (frontend) | • **AC1, AC8, AC9 (download, error, translations):** Vitest: proxy JSON vs binary, download helper reads the file name, button states, error toast, EN/FR labels. |
+| QA (manual) | • **AC2 (same values as QLIN):** open the same variant in QLIN and Radiant on QA, compare the two workbooks cell by cell for one HET maternal, one HOM, one de novo and one RefSeq-only case.<br>• Not automated: the look in Excel itself (fonts, wrapped heights), checked by eye on the QA diff. |
 
 ## Risks and coverage
 
@@ -109,8 +94,3 @@ No migration, no backfill, no feature flag.
 | Date | Need found | Option A: new ticket (link) | Option B: re-approval (by whom, when) |
 |---|---|---|---|
 | … | … | … | … |
-
-## Linked PRs
-
-- portal: …
-- infra: …
