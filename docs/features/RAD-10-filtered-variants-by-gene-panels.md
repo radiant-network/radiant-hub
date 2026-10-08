@@ -4,7 +4,7 @@
 
 - **Link:** [RAD-10](https://ferlab-crsj.atlassian.net/browse/RAD-10)
 - **Assigned reviewer:** Jeremy Costanza
-- **Status:** Draft
+- **Status:** Approved
 - **Branch (all repos):** `feat/rad-10-filtered-variants-by-gene-panels`
 
 ## Chosen approach
@@ -35,7 +35,7 @@
 |---|---|---|---|---|---|
 | 1 | MV and Ranger | portal (backend) | MV per tenant over `panel` / `panel_has_genes` (at tenant creation and with `refresh-tenants`), refresh after write, both with the admin connection; Ranger read policy on the MV | — | yes |
 | 2 | Upload API | portal (backend) | `PUT` with the file attachment (tenant-scoped action, see open questions), TSV parser and checks, symbol resolution, body size limit, replace the tenant's gene panels in one transaction; OpenAPI + clients | Task 1 | yes (additive) |
-| 3 | SQON field | portal (backend) | `tenant_gene_panel` for germline and somatic SNV (filter and aggregate), accepted only with `TENANT_VIEWS_READ_ENABLED=true` | Task 1 | yes (additive) |
+| 3 | SQON field | portal (backend) | `tenant_gene_panel` for germline and somatic SNV (filter and aggregate) | Task 1 | yes (additive) |
 | 4 | Infra | infra | S3 prefix + Airflow read access, QA Airflow runtime (see open questions) | — | yes |
 | 5 | DAG | etl | Run config (`tenant`, `gene_panel_filepath`, `strict`), read the file from S3, attach it to one `PUT`, log the warnings, `radiant_python` pinned to the merged task 2 SHA, runbook | Tasks 2, 4 | yes once 2 is deployed |
 | 6 | Labels | portal (frontend) | EN/FR facet label and tooltip, validated by the clinical team | — | yes |
@@ -44,16 +44,6 @@
 
 No specific UX task: the facet reuses the existing multiselect facet.
 
-## Contract changes
-
-| Contract | Change | Writer | Readers | Migration / compatibility |
-|---|---|---|---|---|
-| API: `/{tenant}/gene_panels` | New `PUT` (`multipart/form-data`, one `.tsv` file part, `strict` param; replaces all the tenant's gene panels with the panels of the file; tenant-scoped action to decide) | portal backend | etl (`radiant_python`, pinned SHA) | Additive. First file upload endpoint of the API. ETL consumer row in `portal-api.md` changes |
-| Postgres `panel`, `panel_has_genes` | New writer: the upload endpoint. No DDL change | portal backend | portal backend (case filters, analysis catalog), MV | Each upload deletes and re-creates the tenant's gene panels, so their IDs change. Prescription panels stay unchanged. Saved filters use the panel name, so they still work while the name does not change |
-| Gene panel file format | TSV, UTF-8, header row. Columns `panel_code`, `panel_name`, `symbol`, optional `ensembl_id`. One row per gene, many panels per file | clinicians (via the operator) | portal backend (parser) | New contract doc. The API owns the format |
-| API: germline and somatic SNV `list`, `count`, `aggregate` | New SQON field `tenant_gene_panel`, values are panel names | portal backend | portal frontend, mcp | Additive |
-| StarRocks `{tenant}_tenant.gene_panel_mv` | New per-tenant async MV `(panel, symbol)` over `radiant_jdbc` | portal backend | portal backend, mcp | Created by `refresh-tenants` for existing tenants. A later change to the MV needs a drop and a re-create |
-
 ## Merge and rollout order
 
 1. infra: S3 prefix and Airflow read access. Check the prod StarRocks version (QA runs 4.0.11).
@@ -61,7 +51,7 @@ No specific UX task: the facet reuses the existing multiselect facet.
 3. etl: task 5, pinned to the merged backend SHA. **Reverse of the usual order**: the ETL calls the API, so the API comes first.
 4. portal frontend and mcp: tasks 6, 7, 8, after step 2 in each environment.
 
-No migration, no backfill. No feature flag: the facet is empty until a panel is loaded. Keep `TENANT_VIEWS_READ_ENABLED=true` where the field is exposed.
+No migration, no backfill. No feature flag: the facet is empty until a panel is loaded. The field reads a per-tenant MV, so it needs tenant-scoped reads. This becomes the default when the migration flag `TENANT_VIEWS_READ_ENABLED` is removed. Until then, the flag must be on.
 
 ## Test strategy
 
@@ -94,8 +84,7 @@ No migration, no backfill. No feature flag: the facet is empty until a panel is 
 | Module | Questions |
 |---|---|
 | story / product | • **Story rule on S3:** the story asks the operator to archive the raw `.tsv` in S3 for DR. With DR out of scope, the S3 file is only the DAG input. Update the story?<br>• **Panel file:** is there a sample file? Do clinicians already use stable panel codes?<br>• **Ownership:** who maintains the panels, and how often? Facet label in EN/FR? |
-| portal (backend) | • **Unmatched symbols:** `panel_has_genes` requires an Ensembl ID, so a symbol that is not in `ensembl_gene` is skipped. Accept this, or add a migration to keep all symbols? Proposal: skip and report.<br>• **Delete scope:** the upload must delete only the uploaded gene panels, not the prescription panels of the analysis catalog (same `panel` table). How do we tell them apart? Options:<br>&nbsp;&nbsp;◦ a new `panel_type` value for uploaded panels (seed migration);<br>&nbsp;&nbsp;◦ the existing `virtual` type, if no prescription panel uses it;<br>&nbsp;&nbsp;◦ skip the panels that the analysis catalog references.<br>• **Case filters:** the case list panel filter lists all panels of the tenant. Uploaded panels will show there too. Is this wanted?<br>• **Authorization:** which tenant-scoped action protects the upload? It must cover the ETL account now and users who upload from the browser later. Options:<br>&nbsp;&nbsp;◦ new action `can_manage_gene_panel` in the existing `tenant_admin` role (seed, backfill for existing tenants, grant to the ETL account);<br>&nbsp;&nbsp;◦ reuse `can_manage_org` (no migration, but it mixes two permissions);<br>&nbsp;&nbsp;◦ new action in a new role.<br>• **OpenAPI:** this is the first file upload route. Check that the OpenAPI generator writes a `multipart/form-data` body, and that the generated TS and Python clients send the file. |
-| infra | • **S3:** which bucket and prefix?<br>• **QA Airflow runtime:** QA runs stock Airflow 3.2.1 with no extra packages. Where does `radiant_python` run? Proposal: a pod in the radiant-task-operator image.<br>• **D3b:** prod StarRocks version, and is `TENANT_VIEWS_READ_ENABLED` on? |
+| infra | • **S3:** which bucket and prefix?<br>• **D3b:** prod StarRocks version? |
 
 ## Approval
 
@@ -112,3 +101,6 @@ No migration, no backfill. No feature flag: the facet is empty until a panel is 
 | Date | Need found | Option A: new ticket (link) | Option B: re-approval (by whom, when) |
 |---|---|---|---|
 | 2026-10-05 | Task 5 (etl): the DAG does not use the generated `radiant_python` client. It sends the `PUT /{tenant}/gene_panels` with the hand-written ETL portal client (`radiant/tasks/nextflow/portal.py`, `requests`), with the same `radiant_api_conn` connection as the other portal calls. Reason: the client is too much for one call, and it must be installed and pinned in each Airflow runtime (local image, MWAA Airflow 2 and 3, QA). Effects: the frozen-scope rule "The hand-written ETL portal client does not change" no longer applies; there is no `radiant_python` pin in the ETL; infra task 4 does not need a QA Airflow runtime for `radiant_python`, only S3 read access for the worker. Moving the ETL to `radiant_python` stays a separate ticket. | — | Pending: Jeremy Costanza |
+| 2026-10-07 | Task 2 (portal backend, RAD-27, portal #1696): **file format changed.** The file has a `symbol` column and a `panels` column (comma-separated panel codes), one row per gene. Other columns (for example `version`) are ignored. There is no `panel_name` and no `ensembl_id` column: a new panel is named by its code. The `symbol` can also be an Ensembl gene ID. A symbol shared by several Ensembl genes adds all of them. The stored symbol is the `ensembl_gene` name, not the file text. Checks: a duplicate symbol, or two codes that differ only by case, give 400; the file limit is 10 MiB (413). Effect: for an uploaded panel, the facet bucket is its code. | — | Pending: Jeremy Costanza |
+| 2026-10-07 | Task 2 (portal backend, RAD-27): **delete scope** (resolves the open question). A new `panel_type` `uploaded` (seed migration 000041) marks the panels that the upload creates. The upload matches the tenant's panels by code, of any type: a catalog panel with the same code keeps its row and gets the genes of the file. A panel missing from the file loses its genes; if it is an uploaded panel, it is deleted (409 if the analysis catalog still uses it). The plan said that catalog panels stay unchanged: their rows stay, but the upload now sets their genes. The MV covers every panel type, but only the upload writes panel genes, so the facet shows exactly the panels of the last file: a catalog panel shows only when the file names its code. The case list panel filter excludes uploaded panels (resolves the "case filters" question). | — | Pending: Jeremy Costanza |
+| 2026-10-07 | Task 2 (portal backend, RAD-27): **authorization** (resolves the open question). A new tenant-scoped action `can_manage_analysis_catalog`, not `can_manage_gene_panel`. Migration 000041 grants it to the default `tenant_admin` role of the existing tenants. For new tenants, the default roles give it to `tenant_admin` and `data_manager`. The `data_manager` role of the existing tenants does not get it (no backfill). | — | Pending: Jeremy Costanza |
