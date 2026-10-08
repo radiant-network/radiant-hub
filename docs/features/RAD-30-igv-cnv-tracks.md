@@ -133,3 +133,211 @@ The story checks no particular business risk. The plan adds new presigned file l
 | Date | Need found | Option A: new ticket (link) | Option B: re-approval (by whom, when) |
 |---|---|---|---|
 | … | … | … | … |
+
+## Appendix
+
+### A. Sample `GET /{tenant}/igv/{case_id}` response
+
+Germline trio, shortened to the proband (`S123`) and the mother (`S124`). The mother has no Seg file, so she has no `seg` item. Presigned URLs are shortened. New fields are `sequencing_experiment_id` and the arrays after `alignment`.
+
+```json
+{
+  "alignment": [
+    {
+      "sequencing_experiment_id": 101,
+      "patient_id": 1,
+      "family_role": "proband",
+      "sex": "male",
+      "type": "alignment",
+      "format": "cram",
+      "url": "https://<bucket>.s3.amazonaws.com/S123.cram?X-Amz-Signature=…",
+      "urlExpireAt": 1791480000,
+      "indexURL": "https://<bucket>.s3.amazonaws.com/S123.cram.crai?X-Amz-Signature=…",
+      "indexURLExpireAt": 1791480000,
+      "name": "Reads: S123 proband"
+    },
+    {
+      "sequencing_experiment_id": 102,
+      "patient_id": 2,
+      "family_role": "mother",
+      "sex": "female",
+      "type": "alignment",
+      "format": "cram",
+      "url": "https://<bucket>.s3.amazonaws.com/S124.cram?X-Amz-Signature=…",
+      "urlExpireAt": 1791480000,
+      "indexURL": "https://<bucket>.s3.amazonaws.com/S124.cram.crai?X-Amz-Signature=…",
+      "indexURLExpireAt": 1791480000,
+      "name": "Reads: S124 mother"
+    }
+  ],
+  "cnv": [
+    {
+      "sequencing_experiment_id": 101,
+      "patient_id": 1,
+      "family_role": "proband",
+      "sex": "male",
+      "type": "gcnv",
+      "format": "vcf",
+      "url": "https://<bucket>.s3.amazonaws.com/S123.cnv.vcf.gz?X-Amz-Signature=…",
+      "urlExpireAt": 1791480000,
+      "indexURL": "https://<bucket>.s3.amazonaws.com/S123.cnv.vcf.gz.tbi?X-Amz-Signature=…",
+      "indexURLExpireAt": 1791480000,
+      "name": "CNVs: S123 proband"
+    }
+  ],
+  "seg": [
+    {
+      "sequencing_experiment_id": 101,
+      "patient_id": 1,
+      "family_role": "proband",
+      "sex": "male",
+      "type": "igv",
+      "format": "bw",
+      "url": "https://<bucket>.s3.amazonaws.com/S123.seg.bw?X-Amz-Signature=…",
+      "urlExpireAt": 1791480000,
+      "indexURL": "",
+      "indexURLExpireAt": 0,
+      "name": "Seg: S123 proband"
+    }
+  ],
+  "baf": [
+    {
+      "sequencing_experiment_id": 102,
+      "patient_id": 2,
+      "family_role": "mother",
+      "sex": "female",
+      "type": "igv",
+      "format": "bw",
+      "url": "https://<bucket>.s3.amazonaws.com/S124.hard-filtered.baf.bw?X-Amz-Signature=…",
+      "urlExpireAt": 1791480000,
+      "indexURL": "",
+      "indexURLExpireAt": 0,
+      "name": "BAF: S124 mother"
+    }
+  ],
+  "roh": [
+    {
+      "sequencing_experiment_id": 101,
+      "patient_id": 1,
+      "family_role": "proband",
+      "sex": "male",
+      "type": "igv",
+      "format": "bed",
+      "url": "https://<bucket>.s3.amazonaws.com/S123.roh.bed?X-Amz-Signature=…",
+      "urlExpireAt": 1791480000,
+      "indexURL": "",
+      "indexURLExpireAt": 0,
+      "name": "ROH: S123 proband"
+    }
+  ],
+  "capture_targets": [
+    {
+      "sequencing_experiment_id": 101,
+      "patient_id": 1,
+      "family_role": "proband",
+      "sex": "male",
+      "type": "igv",
+      "format": "bed",
+      "url": "https://<bucket>.s3.amazonaws.com/S123.HyperExomeV2_combined_targets.bed?X-Amz-Signature=…",
+      "urlExpireAt": 1791480000,
+      "indexURL": "",
+      "indexURLExpireAt": 0,
+      "name": "Capture targets"
+    }
+  ]
+}
+```
+
+### B. Where the public tracks DAG fits
+
+Green: new. Grey: existing, unchanged. Blue: existing optional branches of `import_open_data`. Initialization path: one manual run per environment.
+
+```mermaid
+flowchart LR
+  OPS(["operator · manual run<br/><i>{&quot;import_igv_tracks&quot;: true}</i>"])
+
+  subgraph IOD["radiant-import-open-data · manual"]
+    direction TB
+    S([start]) --> T1["refresh_iceberg_tables"]
+    T1 --> T2["compute_import_gates"]
+    T2 --> T3["open-data task groups<br/><i>variants, genes</i>"]
+    T3 --> B1{{"clinvar_rcv_summary"}}
+    T3 --> B2{{"cytoband"}}
+    T3 --> B3{{"cosmic_gene_set"}}
+    T3 --> B4{{"cosmic_mutation_set"}}
+    T3 --> B5{{"igv_tracks<br/><b>if import_igv_tracks</b>"}}
+  end
+
+  subgraph CGS["radiant-import-cosmic-gene-set"]
+    C1["broker load"]
+  end
+
+  subgraph CMS["radiant-import-cosmic-mutation-set"]
+    M1["normalize<br/><i>radiant-operator · bcftools</i>"] --> M2["broker load"]
+  end
+
+  subgraph IGV["radiant-import-igv-tracks · NEW"]
+    direction TB
+    I1["download 11 public sources<br/><i>NCBI, DGV, gnomAD, ClinGen, UCSC</i>"]
+    I1 --> I2["convert to GFF3, sort,<br/>bgzip, tabix<br/><i>radiant-operator · + tabix pkg</i>"]
+    I2 --> I3["write files + .tbi<br/><i>igv_tracks_prefix</i>"]
+  end
+
+  BUCKET[("public bucket<br/>igv/")]
+  UI["portal · IGV Tracks menu<br/><i>browser, anonymous read</i>"]
+
+  OPS ==> S
+  B3 -. trigger .-> C1
+  B4 -. trigger .-> M1
+  B5 == trigger ==> I1
+  I3 ==> BUCKET
+  BUCKET ==> UI
+
+  classDef existing fill:#f4f5f7,stroke:#9aa1ab,color:#2b2f36
+  classDef branch fill:#eef2ff,stroke:#6b7bd6,color:#2b2f36
+  classDef new fill:#e6f7ee,stroke:#1f9d55,stroke-width:2px,color:#0f3d24
+  classDef store fill:#fff7e6,stroke:#d4a017,color:#4a3700
+
+  class S,T1,T2,T3,C1,M1,M2 existing
+  class B1,B2,B3,B4 branch
+  class OPS,B5,I1,I2,I3,UI new
+  class BUCKET store
+  style IGV fill:#f3fbf6,stroke:#1f9d55,stroke-width:2px
+  style IOD fill:#fafbfc,stroke:#9aa1ab,stroke-width:1.5px
+  style CGS fill:#fafbfc,stroke:#c3c8cf
+  style CMS fill:#fafbfc,stroke:#c3c8cf
+```
+
+### C. New tracks and their origin
+
+18 new kinds of track: 5 from the case files, 13 public. A family of *n* members gets 4*n* + 1 case tracks (trio: 13), next to its *n* existing Reads tracks.
+
+**Case tracks** (from the IGV endpoint, presigned URLs)
+
+| Track | Shown for | Document (data type / format) | Origin |
+|---|---|---|---|
+| CNVs | each member | `gcnv` or `scnv` / `vcf` + `tbi` | Output of the variant-calling task of the sample (DRAGEN CNV VCF) |
+| Seg | each member | `igv` / `bw`, `*.seg.bw` | Qlin case file, imported as `igv` (SJRA-1963) |
+| BAF | each member | `igv` / `bw`, `*.baf.bw` | Qlin case file, imported as `igv` (SJRA-1963) |
+| ROH | each member | `igv` / `bed`, `*.roh.bed` | Qlin case file, imported as `igv` (SJRA-1963) |
+| Capture targets | once, proband or tumor | `igv` / `bed`, `*_targets.bed` | Qlin case file, imported as `igv` (SJRA-1963) |
+
+**Public tracks** (Tracks menu, built by `radiant-import-igv-tracks` into the public bucket)
+
+| Track | Context | On by default | File | Upstream source |
+|---|---|---|---|---|
+| ClinVar | SNV | no | `clinvar.vcf.gz` | [NCBI ClinVar, VCF GRCh38](https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/) |
+| DGV | CNV | yes | `DGV_GS_hg38.cleaned.sorted.gff3.gz` | [DGV gold standard, hg38](https://dgv.tcag.ca/dgv/docs/DGV.GS.hg38.gff3) |
+| ClinVar SVs | CNV | yes | `nstd102.GRCh38.variant_call.vcf.gz` | [NCBI dbVar, study nstd102](https://ftp.ncbi.nlm.nih.gov/pub/dbVar/data/Homo_sapiens/by_study/vcf/) |
+| ClinGen region haploinsufficiency | CNV | yes | `ClinGen_region_curation_list_GRCh38.sorted.gff3.gz` | ClinGen region dosage, GRCh38 (`ftp://ftp.clinicalgenome.org/ClinGen_region_curation_list_GRCh38.tsv`) |
+| ClinGen region triplosensitivity | CNV | yes | same file as above | same |
+| gnomAD SV v4.1 | CNV | no | `gnomad.v4.1.sv.sites.vcf.gz` | [gnomAD 4.1 genome SV](https://storage.googleapis.com/gcp-public-data--gnomad/release/4.1/genome_sv/) |
+| gnomAD CNV v4.1 | CNV | no | `gnomad.v4.1.cnv.all.vcf.gz` | [gnomAD 4.1 exome CNV](https://storage.googleapis.com/gcp-public-data--gnomad/release/4.1/exome_cnv/) |
+| ClinGen gene haploinsufficiency | CNV | no | `ClinGen_gene_curation_list_GRCh38.sorted.gff3.gz` | ClinGen gene dosage, GRCh38 (`ftp://ftp.clinicalgenome.org/ClinGen_gene_curation_list_GRCh38.tsv`) |
+| ClinGen gene triplosensitivity | CNV | no | same file as above | same |
+| Segmental duplications | CNV | no | `hg38.genomicSuperDups.gff3.gz` | [UCSC `genomicSuperDups`](https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/genomicSuperDups.txt.gz) |
+| RepeatMasker | CNV | no | `hg38.rmsk.gff3.gz` | [UCSC `rmsk`](https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/rmsk.txt.gz) |
+| Simple repeats | CNV | no | `hg38.simpleRepeat.gff3.gz` | [UCSC `simpleRepeat`](https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/simpleRepeat.txt.gz) |
+| Self chain | CNV | no | `hg38.chainSelf.gff3.gz` | [UCSC `chainSelf`](https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/chainSelf.txt.gz) |
+
+File names and sources are those of Qlin's `etl_import_igv`. Each file has its `.tbi` next to it.
