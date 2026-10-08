@@ -4,7 +4,7 @@
 
 - **Link:** [RAD-40](https://ferlab-crsj.atlassian.net/browse/RAD-40)
 - **Assigned reviewer:** Jeremy Costanza
-- **Status:** In review
+- **Status:** Approved
 - **Branch (all repos):** `feat/rad-40-filter-cnv-by-gene-panels`
 
 ## Chosen approach
