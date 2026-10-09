@@ -43,7 +43,7 @@
 - **portal (frontend)**
   - **IGV component rewrite:** today every track goes to `createBrowser`, so one failing track fails the whole browser; the browser is never removed (one leak per dialog opening); the `loadTrack` type is wrong (one config, not an array).
     - igv.js comes from npm (pinned `igv` package with its own types), not from the jsDelivr script loaded in the `<head>` of every page. The portal renders on the server (`ssr: true`), so igv is imported on the client only, when the dialog opens.
-    - The browser is created with the reference and gene tracks only, and removed when the dialog closes. Case tracks are loaded into it afterwards.
+    - The browser is created with the reference and gene tracks only, and removed when the dialog closes. Creation is safe under React StrictMode (double mount), with no global flag. Case tracks are loaded into it afterwards.
   - **Case tracks:** per member, in this order: CNVs, Reads, Seg, BAF, ROH. The capture targets track sits under the RefSeq gene track.
   - **Formats:** CNVs as a [variant track](https://igv.org/doc/igvjs/tracks/Variant-Track/). Seg and BAF as [wig tracks](https://igv.org/doc/igvjs/tracks/Wig-Track/) (bigWig). ROH and targets as [annotation tracks](https://igv.org/doc/igvjs/tracks/Annotation-Track/) (BED).
   - **CNV colors:** gain blue, loss red, the same in every CNV track. In DRAGEN CNV VCFs, `SVTYPE` is always `CNV`; gain and loss are in `ALT` (`<DUP>` / `<DEL>`). The igv.js `colorBy` option reads an INFO field only, so the color needs a color function on `ALT` (not verified, see open questions).
@@ -51,10 +51,11 @@
   - **Large families:** every member's tracks show by default, as AC1 asks. A request cap protects the browser: CRAM requests are throttled to 20 in flight (plain queue, no abort), installed before igv loads.
   - **chrM:** the risk is zooming out, not the opening window (±100 bp today). chrM is very deep on WGS, and the default alignment `visibilityWindow` (30 kb) is larger than chrM (16,569 bp), so a zoomed-out view fetches every CRAM slice of every member.
     - At load, each alignment track counts its chrM slices in its CRAM index. Sparse (exome) tracks stay unrestricted.
-    - On each locus change, dense tracks on chrM get a `visibilityWindow` from a slice budget shared between them. igv.js fetches three screens (one on each side of the view), so the window is a third of what the budget allows. Off chrM, it goes back to 30 kb. The budget starts at the Qlin value and is tuned on a deep WGS trio on QA.
+    - On each locus change, dense tracks on chrM get a `visibilityWindow` from a slice budget shared between them. igv.js fetches three screens (one on each side of the view), so the window is a third of what the budget allows, and never below 500 bp. Off chrM, it goes back to 30 kb. The budget starts at the Qlin value and is tuned on a deep WGS trio on QA.
     - Dense chrM tracks also get a sampling depth of 100, set on the track config (igv.js reads it there).
     - A message tells the user when the window was reduced, and why.
   - **Expiry:** all URLs come from the IGV endpoint and expire together. When they expire, the dialog fetches the endpoint again, so panning or a track switched on later does not fail with 403.
+    - A loaded track keeps the URL it was created with, so the new URLs must reach it. Proposal: give each track a URL function that returns the latest presigned URL. igv.js resolves a function URL in its loader at each request, but some readers may keep the first value (CRAM not checked, see open questions). Fallback: reload the loaded tracks at the same locus.
   - **Tracks menu:** a menu in the IGV dialog switches the public tracks on and off (`loadTrack`, then removal by track id with `findTracks`: track names are not unique, e.g. a patient with WES and WGS). The dialog receives its context (SNV or CNV), which sets the list and the defaults of the story. The track URLs come from `public_tracks` in the IGV response; the frontend keeps the names, contexts, defaults and colors, and maps them to the file ids (ClinGen gene and region files give two tracks each). ClinGen tracks are colored by evidence level with `colorBy` on the GFF3 attribute ([Annotation Track](https://igv.org/doc/igvjs/tracks/Annotation-Track/)). The track config is written for Radiant: only the ClinGen palettes are reused from Qlin.
   - **Reference genome:** no change. Radiant already uses `hg38_1kg` ("Human (hg38 1kg/GATK)") and the igv.org RefSeq track, the same baseline as Qlin.
 - **etl**
@@ -112,7 +113,7 @@ No migration, no backfill, no feature flag. Files that a case does not have give
 
 ## Risks and coverage
 
-The story checks no particular business risk. The plan adds new presigned file links behind `can_search_case` only, like the existing CRAM links. The public tracks hold public data only, so presigning them behind the same check adds no exposure. The story moves that gap to a separate ticket (see frozen scope).
+The story checks no particular business risk. The plan adds new presigned file links behind `can_search_case` only, like the existing CRAM links. The story moves that gap to a separate ticket (see frozen scope). The public tracks hold public data only, so presigning them behind the same check adds no exposure.
 
 ## Frozen scope
 
@@ -130,7 +131,7 @@ The story checks no particular business risk. The plan adds new presigned file l
 | story / product | • **Source of the case files:** the Qlin import of SJRA-1963 registers them; the ETL does not, and no seeds or fixtures hold any. Are they on QA today? Check that their names end with the suffixes above: a file with another name shows no track, with no error. |
 | infra | • **Bucket:** a new bucket, or an `igv/` prefix in a bucket that the portal API already reads (with its CORS rule)? Proposal: the existing bucket, since nothing is public any more. |
 | portal (backend) | • **Somatic CNVs:** confirm on a QA tumor-normal case: `scnv` on the tumor, `gcnv` on the normal (as in Qlin). |
-| portal (frontend) | • **CNV color on `ALT`:** check that the igv.js version picked from npm accepts a color function on a variant track. Fallback: color on an INFO field added by the pipeline.<br>• **UX task (task 8):** needed? |
+| portal (frontend) | • **CNV color on `ALT`:** check that the igv.js version picked from npm accepts a color function on a variant track. Fallback: color on an INFO field added by the pipeline.<br>• **URL refresh:** check that a function URL is resolved at each request for CRAM, bigWig, VCF and GFF3 tracks in the picked igv.js version. If not, the refresh reloads the tracks.<br>• **UX task (task 8):** needed? |
 
 ## Approval
 
@@ -346,7 +347,7 @@ flowchart LR
 
 | Track | Shown for | Document (data type / format) | Origin |
 |---|---|---|---|
-| CNVs | each member | `gcnv` or `scnv` / `vcf` + `tbi` | Output of the variant-calling task of the sample (DRAGEN CNV VCF) |
+| CNVs | each sample | `gcnv` or `scnv` / `vcf` + `tbi` | Output of the variant-calling task of the sample (DRAGEN CNV VCF) |
 | Seg | each member | `igv` / `bw`, `*.seg.bw` | Qlin case file, imported as `igv` (SJRA-1963) |
 | BAF | each member | `igv` / `bw`, `*.baf.bw` | Qlin case file, imported as `igv` (SJRA-1963) |
 | ROH | each member | `igv` / `bed`, `*.roh.bed` | Qlin case file, imported as `igv` (SJRA-1963) |
