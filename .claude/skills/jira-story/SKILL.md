@@ -42,13 +42,18 @@ Check each item of the template's Definition of Ready against the draft. List th
 
 Show the full description (Markdown, template section order, the "Definition of Ready" checklist with the boxes that pass checked), the summary and the components. Don't include the template's instructions (the italic guidance lines), only the filled content. **Create nothing until the user approves the preview.**
 
+Formatting in the description:
+
+- **Acceptance criteria:** one checkbox per criterion, no bullet list. In the preview write them as `- [ ]` lines. In Jira they must be an ADF `taskList` (see step 4): the Markdown converter does not create checkboxes, it turns `- [ ]` into a bullet with a literal `[ ]`.
+- **Business risks and Definition of Ready:** plain bullets prefixed with ✅ (applies / passes) or ⬜ (does not), not checkboxes.
+
 ## 4. Create
 
 Call `createJiraIssue` with:
 
 - `cloudId`, `projectKey: "RAD"`, `issueTypeName: "Story"`
 - `summary`: the title
-- `description`: the approved Markdown, `contentFormat: "markdown"`
+- `description`: the approved content as an ADF document, `contentFormat: "adf"`. Headings are `heading` (level 2), lists are `bulletList`. The acceptance criteria are a `taskList` (`attrs.localId`, e.g. `"ac"`) of `taskItem`s (`attrs: {"localId": "ac-1", "state": "TODO"}`), each holding inline `text` nodes directly, with no `paragraph`. Bold is a `strong` mark.
 - `parent`: the epic key, if the user gave one
 - `additional_fields`: `{"components": [{"name": "api"}, {"name": "ui"}]}` with the approved components. Never create a story without one.
 
