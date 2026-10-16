@@ -11,11 +11,65 @@
 
 **Summary:** the ETL reads the pairs that slivar already wrote in the VCF (`slivar_comphet`), stores them in a new per-tenant table `germline_snv_comphet`, and adds a per-gene summary to each occurrence. The portal shows the summary in the variant table, adds a boolean facet, and lists the partners of a variant on click.
 
+### Data model
+
+**Iceberg.** The VCF pass writes one new table next to the occurrences. The Iceberg occurrence table does not change: its init drops and recreates it, so the summary columns live in StarRocks only.
+
+```text
+ germline_snv_occurrence  (existing, unchanged)       + germline_snv_comphet  (new)
+ ┌──────────────────────────────────────┐             ┌──────────────────────────────────────┐
+ │ part, task_id         (partitions)   │             │ part, task_id         (partitions)   │
+ │ seq_id, aliquot, tenant_code         │             │ seq_id, tenant_code   sample, tenant │
+ │ locus_hash            the variant    │◀────────────│ locus_hash            the variant    │
+ │ zygosity, calls, …                   │             │ partner_locus_hash    other variant  │
+ └──────────────────────────────────────┘             │ symbol                gene of pair   │
+                                                      └──────────────────────────────────────┘
+          │ existing occurrence insert                          │ new pair insert
+          │ locus_hash → locus_id (snv_tmp_variant)             │ both hashes → locus_id (snv_tmp_variant)
+          ▼                                                     ▼
+       StarRocks                                            StarRocks
+```
+
+- Same partitions as the occurrences (`part`, `task_id`), so a re-imported task overwrites its pairs in the same commit step as its occurrences.
+- Hashes, not ids: `locus_id` is assigned in StarRocks. The partner hash uses the same locus key as every other source.
+- `tenant_code` lets the per-tenant insert keep only its tenant's rows, as the occurrence and Exomiser inserts do.
+
+**StarRocks.** New table and new columns (`+`), in each `{tenant}_tenant` database:
+
+```text
+ germline__snv__occurrence  (existing, one row per sample × variant)
+ ┌───────────────────────────────────────────────┐
+ │ part, seq_id, task_id, locus_id   (key)       │
+ │ zygosity, symbol, …               (existing)  │
+ │ + has_comphet     BOOLEAN                     │  facet
+ │ + comphet_genes   [{symbol, nb}]              │  "BRCA2 (2)" in the table
+ └───────────────────────────────────────────────┘
+          │ same part, seq_id, task_id
+          │ locus_id = the variant
+          ▼
+ + germline_snv_comphet  (new, one row per sample × variant × partner × gene)
+ ┌───────────────────────────────────────────────┐
+ │ part, seq_id, task_id   same sample and task  │
+ │ locus_id                the variant           │
+ │ partner_locus_id        the other variant     │  click on "2" lists these
+ │ symbol                  gene of the pair      │
+ └───────────────────────────────────────────────┘
+```
+
+Example: the proband (`seq_id` 7) carries V1, V2 and V3 in BRCA2. Slivar pairs V1 with V2 and with V3.
+
+| Table | Rows |
+|---|---|
+| `germline_snv_comphet` | (7, V1, V2, BRCA2), (7, V2, V1, BRCA2), (7, V1, V3, BRCA2), (7, V3, V1, BRCA2) |
+| `germline__snv__occurrence` | V1: `has_comphet` true, `comphet_genes` [BRCA2 (2)]. V2 and V3: true, [BRCA2 (1)] |
+
+Each pair is stored in both directions, because slivar tags both variants. A `comphet_genes` count is the number of rows of the pair table for that variant and gene.
+
 ### etl
 
 - **Source:** the INFO tag `slivar_comphet` of the germline SNV VCF. Each value names the sample, the gene and the partner variant (`sample/gene/pair_id/chrom/pos/ref/alt`, see the [slivar wiki](https://github.com/brentp/slivar/wiki/compound-heterozygotes)). The partner locus is the other variant of the pair.
 - **Parsing:** during the existing VCF pass, which already writes three tables. Keep the entries of each progeny sample. Hash the partner with the same locus key as every other source.
-- **Pairs:** a new Iceberg table `germline_snv_comphet` (part, task, sample, variant hash, partner hash, gene), written by the same pass. Then a new per-tenant StarRocks table `germline_snv_comphet` (`part`, `seq_id`, `task_id`, `locus_id`, `partner_locus_id`, `symbol`). Both locus ids are resolved through `snv_tmp_variant`, as the occurrence and Exomiser inserts do. Loaded with the partition swap used for Exomiser, keyed by task like the occurrences.
+- **Pairs:** a new Iceberg table `germline_snv_comphet` (see the data model), written by the same pass. Then a new per-tenant StarRocks table `germline_snv_comphet` (`part`, `seq_id`, `task_id`, `locus_id`, `partner_locus_id`, `symbol`). Both locus ids are resolved through `snv_tmp_variant`, as the occurrence and Exomiser inserts do. Loaded with the partition swap used for Exomiser, keyed by task like the occurrences.
 - **Summary on the occurrence:** two nullable columns appended to `germline__snv__occurrence`: `has_comphet` (BOOLEAN) and `comphet_genes` (list of gene + number of partners). They are filled by the occurrence insert, which left-joins the per-variant, per-gene partner counts of the StarRocks pair table, as it already left-joins Exomiser. The pair table is therefore loaded before the occurrences, and the count is built from the same rows the click lists. The Iceberg occurrence table does not change.
 - **No candidate column.** Confirmed vs candidate is derived from the family structure (story decision).
 - **Data QA:** each `comphet_genes` count equals the number of rows of `germline_snv_comphet` for that variant and gene. Every `partner_locus_id` exists in the tenant's occurrences of the same sample.
