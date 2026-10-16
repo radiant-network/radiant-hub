@@ -65,6 +65,7 @@ StarRocks somatic SNV occurrences, variants, consequences
 | 1 | Somatic params set | infra | Second SNV params ConfigMap (`step = normalize`, `tools = vep`, germline VEP values), QA then prod | — | yes (nothing uses it yet) |
 | 2 | Somatic annotation cases DAG | etl | Pending query, cases DAG, launcher run with the somatic params, somatic batch body and outputs, seeds on the new contract, DAG docs | Task 1 | yes (manual trigger only) |
 | 3 | Schedule it | etl | Case scheduler: discovery of pending somatic cases, trigger, the import waits for it (like germline SNV), rediscovery | Task 2 | yes |
+| 4 | Somatic import fixtures (post-hoc) | etl | Replace the VEP v111 fixtures of the somatic import tests (`tests/resources/test_somatic_snv.vcf`, `test_somatic_snv_tumor_only.vcf`) with a slice of the first QA somatic run, annotated by VEP v114 merged (TN and TO). Proves AC4 in CI. | Tasks 1 to 3 on QA, one somatic run done | yes (tests only) |
 
 No Labels or UX task: nothing user-visible changes in the portal.
 
@@ -85,7 +86,7 @@ No feature flag. The somatic pending query only matches the new contract, so cas
 | **AC1:** a case with a somatic calling task that has an `ssnv` VCF output and no `radiant_somatic_annotation` task is detected as pending. | etl: integration test of the pending query on the clinical seeds. A TN and a TO calling task with an `ssnv` VCF are pending. |
 | **AC2:** when the annotation completes, a `radiant_somatic_annotation` task is registered with the raw VCF as input, the annotated VCF and its index as outputs (`ssnv`, `vcf` + `tbi`), and the annotation pipeline name and revision in `pipeline_name` and `pipeline_version`, as for germline. | etl: unit tests of the batch body (input, outputs, data types, pipeline name and revision). |
 | **AC3:** with several VCF outputs (`ssnv` and `scnv`), only the `ssnv` VCF is annotated. | etl: same integration test as AC1. The `scnv` VCF of the TO calling task is never selected. |
-| **AC4:** the variants loaded into StarRocks come from the annotated VCF of the task registered by Radiant. | etl: the existing somatic import tests, with a fixture annotated by VEP v114 merged.<br>QA (manual): one TN and one TO case through the scheduler, variants loaded. |
+| **AC4:** the variants loaded into StarRocks come from the annotated VCF of the task registered by Radiant. | etl: the existing somatic import tests, with a fixture annotated by VEP v114 merged (task 4).<br>QA (manual): one TN and one TO case through the scheduler, variants loaded. |
 | **AC5:** a variant in a germline case and in a somatic case annotated by Radiant has the same transcripts (Ensembl + RefSeq, MANE) and consequences. | QA (manual): one shared variant compared in StarRocks. |
 | **AC6:** the annotation task carries the same samples as the calling task, so the TO/TN classification is unchanged; an annotation from `alignment_somatic_variant_calling` is tumor-only. | etl: unit tests of the batch body (aliquots copied from the calling task, one aliquot for `alignment_somatic_variant_calling`).<br>QA (manual): the TN and TO cohorts of the somatic frequencies are the same before and after the backfill. |
 | **AC7:** a case that already has a `radiant_somatic_annotation` task is not annotated a second time. | etl: same integration test as AC1. A calling task whose VCF is already the input of an annotation task is not pending. |
@@ -130,4 +131,22 @@ The manual QA checks run on the `cypress` tenant. Its somatic tasks are reorgani
 
 | Date | Need found | Option A: new ticket (link) | Option B: re-approval (by whom, when) |
 |---|---|---|---|
-| … | … | … | … |
+| 2026-10-16 | **Launcher: a second DAG, not the existing launcher.** The plan runs the somatic annotation "through the existing Nextflow launcher". That launcher runs one driver at a time, so the somatic run waits behind the germline run (hours for WGS), and the import waits for both. Two runs on the same launcher (`max_active_runs=2`) could be two germline WGS runs, which can fill the Nextflow file system. Airflow 3.2.1 cannot limit one driver of each kind in one DAG without pools that must be created in each environment. Implemented: a new launcher DAG, `radiant-nextflow-somatic-snv-annotation`, with one run at a time; the germline launcher does not change. It uses the same launcher image, launch script and `nextflow-snv-cfg`, so the plan's reason for the existing launcher stays true: same pipeline revision, so same VEP (AC5). Only the params ConfigMap is different. The somatic run tag has the prefix `somatic-`, so the two runs never share Nextflow directories. | … | … |
+| 2026-10-16 | **Pending rule: per case, and old QLIN annotations.** The plan checks "no `radiant_somatic_annotation` task already uses that VCF as input" for all cases. Two gaps: a task in two cases, registered on one only, is never annotated on the other; and a QLIN annotation has no input, so a calling task sent the old way with a raw VCF typed `ssnv` is annotated again, and the import loads both. Implemented: the check is per (case, calling task), and an annotation with no input, on the same case and exactly the same experiments, counts as done. | … | … |
+| 2026-10-16 | **Case scheduler: task ids renamed.** Not in the plan. Next to a somatic key, `snv` and `cnv` did not say that they are germline only. Renamed to `germline_snv`, `germline_cnv`, `somatic_snv` in the discovery and trigger task ids. Deployment: pause `radiant-case-scheduler`, or deploy when no scheduler run is active; update alerts that use the old task ids. | … | … |
+
+### Note: pending rule, per case and old QLIN annotations
+
+The plan's rule: a calling task is pending when no `radiant_somatic_annotation` task uses its raw `ssnv` VCF as input, on any case. This rule has two gaps.
+
+**Gap 1: a calling task held by two cases.** A calling task can belong to two somatic cases, when both cases hold its experiments. Registration sends one PATCH per tenant. If the PATCH for case A succeeds and the PATCH for case B fails (403, portal down), the VCF is already the input of case A's annotation on the next day. With a check for all cases, the task is done, and case B never gets its annotation or its variants. Nothing reports it.
+Implemented: the check is per (case, calling task). The task stays pending on case B until case B has its own annotation with that VCF as input. Only case B is run again.
+Test: `test_an_annotation_on_one_case_does_not_hide_another_case_of_the_task`.
+
+**Gap 2: old QLIN annotations.** Before RAD-23, QLIN sent the `radiant_somatic_annotation` itself, with no input document, and the import loads it. The plan assumes that a calling task sent the old way has no raw VCF typed `ssnv`. If it has one, no annotation uses the VCF as input, and the task is pending. Radiant then registers a second annotation. The import keys on `task_id`, so it loads both annotation tasks for the same experiment, and the variants of the case are in StarRocks two times. This is against the plan's rule "cases sent the old way are left as they are".
+Implemented: an annotation with no input document, on the same case, over exactly the same experiments as the calling task, counts as done. "Exactly": a case can have a tumor-normal call (tumor + normal) and a tumor-only call (tumor). An old tumor-normal annotation must not hide the tumor-only call, which is a different VCF, and the reverse.
+Tests: `test_a_legacy_annotation_over_exactly_the_task_s_experiments_stops_it`, `test_a_legacy_tumor_normal_annotation_does_not_hide_a_tumor_only_call`.
+
+**No change:** a task is still a candidate only with an `ssnv` VCF, `completed` experiments, and a somatic case that holds all its experiments. One calling task in one case is annotated one time, as in the plan.
+
+**Limit:** an old annotation over other experiments does not stop the task. Example: QLIN annotated a tumor-only call, and the calling task is tumor-normal. The task is annotated, which is correct: it is a different VCF.
