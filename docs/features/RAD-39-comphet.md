@@ -146,7 +146,7 @@ No feature flag and no backfill: cases imported before step 2 have no compound h
 | Module | Questions |
 |---|---|
 | etl | • ~~**Gene field**~~: answered in task 1, slivar writes the VEP `SYMBOL` (checked on a real trio VCF).<br>• ~~**Sample names**~~: answered in task 1, the slivar sample is the VCF sample column, i.e. the aliquot the pedigree maps. |
-| portal (backend) | • **`comphet_genes` shape:** no query reads an ARRAY<STRUCT> column today. Task 2 checked it on StarRocks 3.4.2 (prod version): the MySQL driver returns it as a JSON string, `[{"symbol":"BRCA2","nb":2}]`. Check in task 3 that the existing array type can read it. Fallback: two parallel arrays (genes, counts). |
+| portal (backend) | • **`comphet_genes` shape:** no query reads an ARRAY<STRUCT> column today. Task 2 checked it on StarRocks 4.0.16 (prod version): the MySQL driver returns it as a JSON string, `[{"symbol":"BRCA2","nb":2}]`. Check in task 3 that the existing array type can read it. Fallback: two parallel arrays (genes, counts). |
 | portal (frontend) | • **Saved filters:** the partner pill shows the locus only if a saved filter keeps the pill's display override. Otherwise a reloaded filter shows the raw `locus_id`. Check in task 5. |
 | story / product | • **Reviewer:** TBD. The story is not ready for the sprint without one.<br>• **Frequency filters in slivar** (open question in the story, for the bioinfo team).<br>• **Facet values:** boolean (story) or none / confirmed / candidate? |
 
