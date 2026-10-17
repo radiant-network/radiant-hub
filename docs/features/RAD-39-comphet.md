@@ -78,7 +78,7 @@ Each pair is stored in both directions, because slivar tags both variants. A `co
 ### portal (backend)
 
 - **Fields:** `has_comphet` is selectable, filterable and aggregatable, like the somatic `hotspot` boolean. `comphet_genes` is selectable, returned in the list.
-- **Partner filter:** a new filterable sqon field on the pair table (for example `comphet_of`). Its value is the `locus_id` of the clicked variant. The backend keeps the occurrences whose `locus_id` is a `partner_locus_id` of that variant for the same sample. No locus conversion is needed. The join reuses the semi-join that the consequence and gene-panel filters already use, in the list, count, aggregate and statistics queries, so the facets follow the filter.
+- **Partner filter:** a new filterable sqon field on the pair table (for example `comphet_of`). Its value is the `locus_id` of the clicked variant. The backend keeps the occurrences whose `locus_id` is a `partner_locus_id` of that variant for the same sample. No locus conversion is needed. The field (`comphet_of`) is an array: a LEFT JOIN of the sample's pairs grouped by partner (`array_agg(locus_id)`, one row per occurrence, so nothing is duplicated) and the filter `array_contains(ch.comphet_of, ?)`. A second semi-join was not possible: the whole sqon is rendered in the consequence semi-join `ON` clause. The same join is added in the list, count, aggregate and statistics queries, so the facets follow the filter.
 - **Gene:** the existing `symbol` filter (a consequence in that gene).
 - **Contract:** additive. OpenAPI, TS and Python clients regenerated. The test DDL copies, the local docker DDL and the multi-tenant test loader get the new columns and table.
 
@@ -146,7 +146,7 @@ No feature flag and no backfill: cases imported before step 2 have no compound h
 | Module | Questions |
 |---|---|
 | etl | • ~~**Gene field**~~: answered in task 1, slivar writes the VEP `SYMBOL` (checked on a real trio VCF).<br>• ~~**Sample names**~~: answered in task 1, the slivar sample is the VCF sample column, i.e. the aliquot the pedigree maps. |
-| portal (backend) | • **`comphet_genes` shape:** no query reads an ARRAY<STRUCT> column today. Task 2 checked it on StarRocks 4.0.16 (prod version): the MySQL driver returns it as a JSON string, `[{"symbol":"BRCA2","nb":2}]`. Check in task 3 that the existing array type can read it. Fallback: two parallel arrays (genes, counts). |
+| portal (backend) | • ~~**`comphet_genes` shape**~~: answered in task 3, the driver returns JSON that `JsonArray[ComphetGene]` reads (tested on a real `ARRAY<STRUCT>` column). |
 | portal (frontend) | • **Saved filters:** the partner pill shows the locus only if a saved filter keeps the pill's display override. Otherwise a reloaded filter shows the raw `locus_id`. Check in task 5. |
 | story / product | • **Reviewer:** TBD. The story is not ready for the sprint without one.<br>• **Frequency filters in slivar** (open question in the story, for the bioinfo team).<br>• **Facet values:** boolean (story) or none / confirmed / candidate? |
 
