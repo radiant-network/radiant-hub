@@ -16,8 +16,8 @@
 - **Method per VCF:** the germline SNV processing reads the VCF header once. When it declares the full set of new inheritance tags (`po_*`, the mode tags named after `transmission_mode` values, `unknown_*_genotype`, `non_carrier_proband`, `uniparental_disomy`, `candidate`), every occurrence of that VCF takes its values from the tags. Otherwise the current calculation runs, unchanged. A partial set is treated as absent and logged. Not decided yet: the exact list required (see open questions).
 - **Slivar rules:** the selection rules of the story, applied per progeny sample: modes first (de novo > recessive > dominant > `uniparental_disomy`), the others in `other_transmission_modes`; genotype tags otherwise; a mode wins over `unknown_father_genotype` / `unknown_mother_genotype`; no tag → empty. `po_*` maps one to one to `parental_origin`.
 - **New occurrence columns:** `other_transmission_modes` (list of strings), `transmission_mode_candidate` (boolean), `inheritance_source` (`slivar` or `etl`). Written to the Iceberg germline occurrence table, then appended at the end of `germline__snv__occurrence` (positional insert, `SELECT *` copy).
-  &nbsp;&nbsp;◦ The Iceberg occurrence table has no schema evolution: how it gets the new fields is not decided yet (see options).
-  &nbsp;&nbsp;◦ RAD-39 (in progress) also appends two columns to `germline__snv__occurrence`. Both migrations must keep the order of the create-table DDL: RAD-93's columns go after RAD-39's.
+  - The Iceberg occurrence table has no schema evolution: it is recreated with the new schema, as SJRA-1820 and SJRA-1833 did for other tables. Only the occurrence insert reads it, for the tasks being imported, so the lost history has no reader.
+  - RAD-39 (in progress) also appends two columns to `germline__snv__occurrence`. Both migrations must keep the order of the create-table DDL: RAD-93's columns go after RAD-39's.
 - **Siblings in the PED:** the PED the ETL writes for the pipeline gives every progeny (proband, brothers, sisters) the case's father and mother when they are sequenced. Today only the proband is linked, so siblings would get no `po_*` tag and no trio-based tag. Exomiser's phenopacket pedigree is built separately and does not change.
 - **Pipeline revision:** the launcher image pin (`PIPELINE_REV`) and the annotation task's pipeline version move together to a revision that writes the new tags. The target revision depends on the open question on `impactful`.
 - **Data QA:** `uniparental_disomy` joins the transmission mode dictionary. New tests: values of `other_transmission_modes` in the same dictionary, `inheritance_source` in (`slivar`, `etl`), `transmission_mode_candidate` not null when `inheritance_source = 'slivar'`.
@@ -60,7 +60,7 @@ No UX task: the badge and the facet reuse the existing components.
 ## Merge and rollout order
 
 1. portal: tasks 4 and 5, first. Otherwise the first `uniparental_disomy` shows as a raw value and the facet misses it.
-2. etl: tasks 1 and 2. Run the migration on every `{tenant}_tenant` database, and create the new Iceberg fields (per the chosen option), **before** the DAGs are deployed. Otherwise the positional occurrence insert fails and every `import_part` breaks.
+2. etl: tasks 1 and 2. Run the migration on every `{tenant}_tenant` database, and run **only** the germline occurrence init task to recreate the Iceberg table, with no import running (the other init tasks drop their own tables), **before** the DAGs are deployed. Otherwise the positional occurrence insert fails and every `import_part` breaks.
 3. infra: re-sync the Nextflow SNV config if the check finds a gap (QA, then prod).
 4. etl: task 3, the pin bump, last, once the pipeline revision is decided. From then on, every new case gets the slivar values.
 
@@ -98,15 +98,6 @@ No feature flag: the header decides per VCF. No backfill: loaded cases keep the 
 | bioinfo | • **`impactful` pre-filter:** without its removal, ~92 % of carrier rows of a slivar case lose both values (CA307). Proposal: remove it from `--info`, keep it on the compound-het sides and on a dedicated de novo side for `compound-hets` (~4 config lines). The pin bump (task 3) waits for this.<br>• **X-linked modes:** exclude the PAR, check unaffected parents' quality in the X de novo rule, settle father-alt / mother-unknown for a son (`POSSIBLE_FATHER`).<br>• **Dominant in a duo with an affected parent:** 67,012 rows on CA330, never `candidate`. Flag it `candidate`, or keep it? |
 | etl | • **Required tag set** for the header check: every new tag, or only `po_*` + the mode tags? Proposal: every tag of the chosen revision.<br>• **Sibling hom-alt with an affected hom-alt mother:** rule 1 keeps recessive over dominant. Keep? |
 | story / product | • **Reviewer:** TBD.<br>• **Unaffected progenies:** slivar gives them no mode. Acceptable?<br>• **Proband affected status** of CA307 and CA330 was assumed in the comparison. |
-
-## Options considered
-
-| Axis | Option | Behaviour | Pro / con | Effort |
-|---|---|---|---|---|
-| **A. New fields in the Iceberg occurrence table** | A1: recreate the table | Run only the germline occurrence init task before the deploy, as SJRA-1820 and SJRA-1833 did for other tables. | + existing practice. − the Iceberg occurrence history is lost (only the occurrence insert reads it, for the tasks being imported); an import running during the switch fails. | S |
-| | A2: add the fields in place | A one-off schema update adds the three fields to the existing table. | + no data loss, no window. − a new mechanism, never used in this ETL. | M |
-
-Preliminary lean: **A1** (existing practice, the lost history has no reader).
 
 ## Approval
 
