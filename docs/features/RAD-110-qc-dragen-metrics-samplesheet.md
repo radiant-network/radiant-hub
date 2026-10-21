@@ -10,42 +10,62 @@
 
 ## Chosen approach
 
-quality-control-pipeline BIOINFO-235 ([#51](https://github.com/Ferlab-Ste-Justine/quality-control-pipeline/pull/51)) removes `--dragen_metrics_dir` and reads a per-sample `dragenMetrics` column (a directory or a tarball) from the samplesheet. Each sample is then handled on its own, so the ETL no longer needs to search S3 for the metrics, group cases by directory, or start one run per directory.
+**Summary:** quality-control-pipeline BIOINFO-235 ([#51](https://github.com/Ferlab-Ste-Justine/quality-control-pipeline/pull/51)) removes `--dragen_metrics_dir` and reads a per-sample `dragenMetrics` column (a directory or a tarball) from the samplesheet. Each sample is then handled on its own, so the ETL no longer needs to search S3 for the metrics, group cases by directory, or start one run per directory. The ETL takes each member's DRAGEN metrics tarball from the clinical model, writes it in the samplesheet, and starts a single pipeline run per DAG run.
 
-- **The tarball comes from the clinical model, not from S3.** `pending_quality_control_select.sql` gets a `dragen_metrics` CTE built like `cram`: the alignment task's output document with `data_type_code = 'ssup'` and `format_code = 'tgz'`, with a count of matching documents. The query then returns one row per member instead of one per alignment output document. That fan-out only existed to feed the S3 search.
-- **Fallback:** a member with no tarball gets the directory of its CRAM (the parent of `file1`). It is not checked before the run (see Open questions).
-- **One pipeline run per DAG run:** `locate_metrics` and `group_cases` are removed. `generate_inputs`, `run_pipeline` and `collect_outputs` are no longer mapped tasks; each runs once for all the cases.
-- **The scheduler follows:** `case_scheduler` counts QC work with `select_cases` alone, exactly what the cases DAG will run, with no S3 search.
-- **No more command-line flag:** the QC driver script passes only `--input` / `--outdir`, like the CNV one. The manual DAG loses its `dragen_metrics_dir` param.
-- **The pin is bumped once, in both places:** `QC_PIPELINE_REV` in `Dockerfile.nextflow.launcher` and `QC_PIPELINE` in `radiant/tasks/nextflow/qc/batch.py`, to the tag bioinfo releases.
-- Rejected alternative: keep the one-row-per-document query and pick the tarball in `fold_rows`, because the fan-out existed only for the S3 search. Picking in SQL matches how `cram` / `crai` are picked and lets SQL flag an ambiguous tarball the same way it flags `ambiguous_cram`.
-- Rejected alternative: keep a lighter S3 search for the fallback members only. The story removes the search. The risk it covered is handled in Risks and coverage.
+```text
+clinical  alignment task
+            └─ outputs: CRAM + CRAI, DRAGEN metrics tarball (ssup, tgz)
+                 │ pending QC query: one row per member, tarball picked like the CRAM
+ETL       samplesheet: dragenMetrics = tarball, or the CRAM directory when there is none
+                 │ one pipeline run per DAG run (no S3 search, no grouping)
+bioinfo   quality-control-pipeline (tag with BIOINFO-235): UNTAR, then reads the metrics per sample
+                 │ collect outputs, PATCH /{tenant}/cases/batch
+portal    quality_control_metrics task per case, tarball listed in input_documents
+```
+
+### etl
+
+- **Pending detection:** the tarball comes from the clinical model, not from S3. The pending QC query picks it the way it picks the CRAM: the alignment task's output document with `data_type_code = 'ssup'` and `format_code = 'tgz'`, with a count of matching documents. The query then returns one row per member instead of one per alignment output document; that fan-out only existed to feed the S3 search. A member with two tarballs excludes its case as `ambiguous_dragen_metrics`, as `ambiguous_cram` does today. The exclusion reasons tied to the S3 search (`no_dragen_metrics`, `metrics_not_on_workspace`, `metrics_dir_split`) go away.
+- **Samplesheet:** a new `dragenMetrics` column per member, never empty. It holds the tarball's pod path, or, when the member has no tarball, the directory of its CRAM. The fallback is not checked before the run (see Open questions): each fallback member is logged at WARNING with its directory. A tarball outside the workspace bucket fails input generation, as a CRAM outside it does today.
+- **Cases DAG:** the metrics search and the grouping by directory are removed. Input generation, the pipeline run and output collection are no longer mapped: each runs once for all the cases of the DAG run. The run tag drops its per-group suffix.
+- **Manual DAG and launcher:** the `dragen_metrics_dir` param, its env var and the `--dragen_metrics_dir` flag are removed. The QC driver script passes only `--input` / `--outdir`, like the CNV one.
+- **Case scheduler:** it counts QC work with the case selection alone, exactly what the cases DAG will run, with no S3 search. It no longer needs the Nextflow inputs root.
+- **Registration:** unchanged batch body, except that the tarball is added to the QC task's `input_documents` when it is used, so the task records which metrics it was built from.
+- **Pipeline pin:** bumped once, in both places (launcher image and QC batch module), to the tag bioinfo releases, in the same PR as the column (see Merge and rollout order).
+- **Docs:** the QC and scheduler DAG docs and the ETL `CLAUDE.md` describe the column and the single run. SJRA-1879 gets a "superseded by RAD-110" note on its S3 search and grouping.
+
+Rejected alternatives:
+
+- Keep the one-row-per-document query and pick the tarball in the Python fold of the rows. The fan-out existed only for the S3 search. Picking in SQL matches how the CRAM and CRAI are picked and lets SQL flag an ambiguous tarball the same way it flags an ambiguous CRAM.
+- Keep a lighter S3 search for the fallback members only. The story removes the search. The risk it covered is handled in Risks and coverage.
+
+### infra
+
+- **`UNTAR` image, only if needed:** the pipeline's `UNTAR` step pulls a fully qualified `community.wave.seqera.io/...` image, which the registry rewrite does not send to the ECR cache. If the pod cannot pull it, the QC Nextflow config overrides that process's container with one the ECR cache serves, the way somalier is pinned, and its comments stop referring to `dragen_metrics_dir`. QA, then prod. Infra PR on explicit request only.
+
+### bioinfo
+
+- No change on our side. A release tag containing BIOINFO-235 is a prerequisite (Task 0).
+
+### portal (backend)
+
+- No change. The batch PATCH body keeps its shape; only one more URL appears in `input_documents`.
 
 ## Modules impacted
 
 | Module | Area | Kind of change |
 |---|---|---|
-| etl | `radiant/dags/sql/clinical/pending_quality_control_select.sql` | modified: `dragen_metrics` CTE, `ambiguous_dragen_metrics` reason, one row per member |
-| etl | `radiant/tasks/nextflow/qc/model.py` | modified: `DocumentRow` → member row with `dragen_metrics_url`; `document_urls`, `metrics_dir_s3` and `MetricsGroup` removed |
-| etl | `radiant/tasks/nextflow/qc/resolve.py` | modified: `fold_rows` simplified; the S3-search reasons (`no_dragen_metrics`, `metrics_not_on_workspace`, `metrics_dir_split`) replaced by `ambiguous_dragen_metrics` |
-| etl | `radiant/tasks/nextflow/qc/inputs.py` | modified: `dragenMetrics` column (tarball, or CRAM directory), never empty |
-| etl | `radiant/tasks/nextflow/qc/metrics.py` | removed |
-| etl | `radiant/tasks/nextflow/qc/batch.py` | modified: `QC_PIPELINE` version; the tarball added to the QC task's `input_documents` when used |
-| etl | `radiant/dags/nextflow_quality_control_cases.py` | modified: `locate_metrics` / `group_cases` removed, `generate_inputs` → `run_pipeline` → `collect_outputs` no longer mapped |
-| etl | `radiant/dags/nextflow_quality_control.py`, `radiant/dags/operators/k8s.py` | modified: `dragen_metrics_dir` param, env var and flag removed |
-| etl | `radiant/tasks/nextflow/case_status.py`, `radiant/dags/case_scheduler.py` | modified: `s3_qc_locator` and the `locate_qc` argument removed; `NEXTFLOW_INPUTS_ROOT` no longer read by the scheduler |
-| etl | `Dockerfile.nextflow.launcher` | modified: `QC_PIPELINE_REV` |
-| etl | `radiant/dags/docs/{nextflow_quality_control,nextflow_quality_control_cases,case_scheduler}.md`, `CLAUDE.md`, `design/SJRA-1879-*.md` | modified: describe the column and the single run; SJRA-1879 gets a "superseded by RAD-110" note on §4 and the S3 search |
-| etl | `tests/unit/nextflow/qc/`, `tests/unit/nextflow/test_case_status.py`, `tests/unit/dags/test_nextflow_quality_control*.py`, `tests/unit/dags/operators/k8s/test_nextflow_quality_control_k8s_operator.py`, `tests/unit/dags/test_clinical_qc_sql_render.py`, `tests/integration/dags/sql/test_qc_case_resolution.py` | modified / `test_metrics.py` removed |
-| infra | `infra/qlin-{qa,prod}/kubernetes-manifests/apps/nextflow/qc/nextflow.config` + `README.md` | modified only if `UNTAR` cannot pull (see Merge and rollout order): `withName: 'UNTAR'` container through the ECR cache, and the comments no longer refer to `dragen_metrics_dir` |
-| bioinfo | quality-control-pipeline | none on our side: a release tag containing BIOINFO-235 is a prerequisite |
+| etl | pending QC query (tarball per member), QC samplesheet (`dragenMetrics` column), QC cases DAG (single run, S3 search and grouping removed), manual QC DAG and launcher (flag removed), case scheduler (QC work count), QC batch body (tarball as input document), pipeline pin, DAG docs | modified / removed |
+| infra | QC Nextflow config: `UNTAR` image override, only if it cannot be pulled (QA, then prod) | modified, conditional |
+| bioinfo | none on our side (release tag with BIOINFO-235) | — |
+| portal (backend) | none | — |
 
 ## Tasks
 
 | # | Task | Component | Content | Depends on | Shippable alone? |
 |---|---|---|---|---|---|
 | 0 | Release a QC pipeline tag containing BIOINFO-235 | bioinfo (not ours) | Asked of the bioinfo team. `#51` is under `Unreleased` in their CHANGELOG; the last tag is `v2.0.0`. It is breaking, so it will likely be `v3.0.0`. | — | n/a |
-| 1 | Read DRAGEN metrics from the samplesheet and run once | etl | Everything in the etl rows above, in one PR: the pin bump, the column and the removal of the flag must ship together (see Merge and rollout order). | Task 0 | no: needs the new pipeline tag in the launcher image (same PR) |
+| 1 | Read DRAGEN metrics from the samplesheet and run once | etl | Everything in the etl section above, in one PR: the pin bump, the column and the removal of the flag must ship together (see Merge and rollout order). | Task 0 | no: needs the new pipeline tag in the launcher image (same PR) |
 
 Task 1 stays one PR: it is mostly removals, and splitting off the cleanup would leave dead code in `main` for no reviewer gain. The infra change is not a task: it is a one-block config change that may not be needed at all, and it is tracked as a rollout prerequisite instead. No UX or Labels task: nothing user-visible changes.
 
