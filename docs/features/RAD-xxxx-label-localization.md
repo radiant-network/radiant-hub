@@ -9,11 +9,11 @@
 
 ## Chosen approach
 
-**Summary:** the frontend sends the app language in `Accept-Language`. The API returns each label in that language, with an English fallback. The response shape does not change.
+**Summary:** the frontend sends the app language in `Accept-Language`. The API returns each label in that language, with an English fallback, in the existing `name` field: the response shape does not change. The French label lives in the data, next to the English one. A new or renamed value then needs no frontend release, and per-tenant or admin-created values can be translated too. Example: `ancestry` holds `CA-FR`, `French Canadian`, `Canadien français`; with `Accept-Language: fr`, a case returns `{"code": "CA-FR", "name": "Canadien français"}`.
 
 | Module | Approach |
 |---|---|
-| portal (backend) | • **Today:** labels come from `name_en` only. `ancestry`, `consanguinity`, `exam`, `role` and `action` already store a `name_fr` that nothing reads.<br>• **Locale:** a middleware binds `fr` or `en` to the request context, like the tenant. Default `en`. Responses carry `Vary: Accept-Language`.<br>• **Label helper:** returns `name_fr`, or `name_en` when empty. Every read in scope goes through it.<br>• **Raw codes:** six case entity fields return only a code. Each gets a `*_name` field (additive). |
+| portal (backend) | • **Today:** labels come from `name_en` only. `ancestry`, `consanguinity`, `exam`, `role` and `action` already store a `name_fr` that nothing reads.<br>• **Locale:** a middleware binds `fr` or `en` to the request context, like the tenant. Default `en`. Responses carry `Vary: Accept-Language`.<br>• **Label helper:** returns `name_fr`, or `name_en` when empty. Every read in scope goes through it.<br>• **Raw codes:** six case entity fields return only a code. Each gets a `*_name` field (additive).<br>• **Scope:** the vocabularies that grow (task types, data types, sample types, statuses…), the per-instance vocabularies (exams, ancestry, family relationships) and the roles. Closed vocabularies: not decided yet (see open questions).<br>• **Filters:** always on the code. The translated label is for display only. |
 | portal (frontend) | • **Header:** set from the app language, not the browser's.<br>• **Cache:** the SWR keys ignore the language, so a language switch revalidates every cached request.<br>• **Kept in i18n:** status, priority, affected status, case type, exam interpretation. |
 
 ## Modules impacted
@@ -61,15 +61,15 @@ The story checks no business risk. The clinical wording is reviewed in task 3.
 
 | Module | Not covered |
 |---|---|
-| all | • **HPO in French:** a follow-up story. A French HPO exists ([Gargano et al., 2024](https://doi.org/10.1093/nar/gkad1005)); our loader downloads only the English file (not verified).<br>• **MONDO:** stays in English. |
-| portal (backend) | • **`GET /value_sets/:type`:** stays in English. Its only reader today is the organization category list in the admin.<br>• Other `name_en` reads: sequencing experiments.<br>• Instance entities (organizations, projects, panels, analysis catalog). |
+| all | • **HPO (and maybe MONDO) in French:** a future story, with work in the ETL DAGs: load the French translation into a `name_fr` column of `hpo_term` (`mondo_term`). A French HPO exists ([Gargano et al., 2024](https://doi.org/10.1093/nar/gkad1005)); our loader downloads only the English file (not verified). No French MONDO source identified yet.<br>• **Public gene panel filters** (OMIM, HPO, Orphanet, DDD, COSMIC) work on the panel name. Moving them to an identifier is a follow-up in the ETL; DDD and COSMIC have none. |
+| portal (backend) | • **`GET /value_sets/:type`:** stays in English. Its only reader today is the organization category list in the admin.<br>• Other `name_en` reads: sequencing experiments.<br>• **Panels and analysis catalog in French:** a follow-up story. Each has a single `name` column, which becomes `name_en` + `name_fr`. The tenant gene panel MV and the `tenant_gene_panel` filter are built on the panel name; that story moves the filter to the panel code.<br>• Organizations and projects keep a single `name`. |
 | mcp | • No change: no header, English labels. |
 
 ## Open questions
 
 | Module | Questions |
 |---|---|
-| story / product | • **Radiant team agreement**, before task 1: this reverses the rule "store both languages, return English". |
+| story / product | • **Closed vocabularies** (sex, life status, affected status, case type, case category, onset, histology, priority, strategy): in the data, or in the frontend i18n? Their list is known at build time and does not change. In i18n, they leave tasks 3 and 7, and task 4 becomes a frontend translation. |
 | portal (backend) | • Does the StarRocks JDBC catalog see a new `name_fr` column without a metadata refresh? Check on QA. |
 | Labels | • Fill `name_fr` for the three value sets that the frontend translates (status, priority, affected status)? Nothing reads it in this story. Proposal: yes, for consistency.<br>• "Affecté" or "Atteint" for `affected_status`? |
 | portal (frontend) | • **Onset badge:** the French labels are long. Short label with the full one in a tooltip? |
