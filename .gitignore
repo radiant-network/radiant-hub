@@ -8,5 +8,10 @@
 # Local-only
 /tmp/
 .claude/settings.local.json
+
+# Personal Claude files, never committed
+/.claude/skills/local-*/
+/.claude/agents/local-*.md
+/.claude/rules/local-*.md
 .idea/
 .DS_Store
