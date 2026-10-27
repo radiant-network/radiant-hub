@@ -39,7 +39,8 @@ Then in each environment, QA first, then production:
 
 2. Iceberg: run the Init Iceberg Tables DAG by hand, with no import running, to drop and recreate the Iceberg tables. If skipped, the values are dropped at extraction and the StarRocks load fails.
 3. StarRocks: run the migration on the shared database, then deploy the ETL right after, with no import or re-annotation running. Both inserts are positional: between the two steps, an old insert fails against the new table, and a new insert fails against the old one.
-4. Trigger a re-import of every experiment. In production it takes 1 to 2 weeks, so it is planned with CHOP. Until a locus is re-imported, its consequences have NULL in both columns. Nothing reads the columns yet, so users see no change.
+4. Trigger a re-import of every experiment. In production it takes 1 to 2 weeks, so it is planned with CHOP. Until a locus is re-imported, its consequences have NULL in both columns. Nothing reads the columns yet, so users see no change. During the backfill, data QA does not fail the run because of the new columns: `snv_consequence__should_not_contain_only_null` skips `cds_start` and `cds_end` (`except:` in `snv_consequence.yml`), and `snv_consequence__validate_cds_position_on_coding_terms_RAD-71` reports the rows not yet re-imported as known errors.
+5. Once every environment is re-imported, open a follow-up PR in the etl that removes `cds_start` and `cds_end` from that `except:` list and the `_RAD-71` suffix from the coding-terms test, so both tests guard the columns again.
 
 No feature flag. The re-import is the backfill.
 
