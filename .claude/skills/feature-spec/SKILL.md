@@ -88,11 +88,7 @@ Do not write code. Do not create branches. Do not commit unless the user asks.
   - "facts" dump tables;
   - negative justifications ("X cannot be used because …"). Write what the plan does, not what it does not use;
   - concerns that do not matter at the real scale (for example the cost of reading a small table).
-- Diagrams are optional. Add at most one, only when a flow across systems is hard to follow in words. Validate it before you write it:
-
-  ```sh
-  npx -y @mermaid-js/mermaid-cli -i d1.mmd -o d1.svg
-  ```
+- Diagrams are optional. Add at most one, only when a flow across systems is hard to follow in words. Draw it and check it by rendering it as the `doc-writing` skill says.
 - Target length: about 100 to 150 lines. If the doc is longer, move the detail to the PRs or to module docs (`etl/design/…`).
 
 ## 5. Ground every claim

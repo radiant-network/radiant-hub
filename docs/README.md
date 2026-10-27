@@ -9,4 +9,4 @@ Cross-module documentation. If a doc concerns one module only, keep it in that m
 | [`stories/`](stories/story-template.md) | The Jira story template, filled in at grooming. |
 | [`features/`](features/) | Specs for features that span several modules, one per RAD ticket. |
 
-Diagrams are Mermaid inside the Markdown, so they diff and review like text.
+Diagrams are Mermaid inside the Markdown for flows, so they diff and review like text, SVG files in an `img/` folder next to the doc for geometry (what must align or keep its proportions), and monospace blocks for aligned sequences. The `doc-writing` skill holds the rules and the palette.
