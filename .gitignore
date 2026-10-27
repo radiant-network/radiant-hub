@@ -6,6 +6,7 @@
 /bioinfo/
 
 # Local-only
+/tmp/
 .claude/settings.local.json
 .idea/
 .DS_Store

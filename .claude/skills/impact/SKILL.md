@@ -17,9 +17,9 @@ Do not change code. The output is a report.
 ## 2. Search every module
 
 - Run `make status`. A module that is not checked out goes in the report as **not checked**. Never report "no impact" for it.
-- `make status` also shows each module's branch. Search what is checked out, then say whether the hits are on `main` or only on an open branch (`git -C <module> grep … origin/main`, `gh pr list`): changing an item that is not merged yet is cheaper, because nothing is deployed.
+- `make status` also shows each module's branch. Search what is checked out, then say whether the hits are on `main` or only on an open branch (`git grep … origin/main` and `gh pr list`, from inside the module): changing an item that is not merged yet is cheaper, because nothing is deployed.
 - Search every spelling: `snake_case` (SQL, JSON, Python), `CamelCase` (Go), `camelCase` (TS). For `cmc_tier`: `cmc_tier`, `CmcTier`, `cmcTier`.
-- Use `git -C <module> grep -n -I -e … -- ':!*.lock' ':!*lock.json'`. It skips `node_modules` and build output.
+- From inside the module, use `git grep -n -I -e … -- ':!*.lock' ':!*lock.json'`. It skips `node_modules` and build output.
 - For a wide search, use one Explore agent per module. Check every `file:line` yourself before you report it.
 
 Where each module declares each kind of dependency:
