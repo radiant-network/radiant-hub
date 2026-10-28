@@ -10,7 +10,7 @@ Run `make status` to see which modules are checked out and on which branch. **Ne
 
 ## Modules
 
-Each module has its own `CLAUDE.md`, loaded when you work in that folder. It is the reference for commands, tests and internals. Read it before changing that module.
+Each module has its own `CLAUDE.md`, the reference for its commands, tests and internals. The `claude-files-inheritance` rule says how the hub's and the modules' Claude files combine.
 
 | Path | Repo | What it is |
 |---|---|---|
@@ -41,11 +41,11 @@ To write or create a Jira story (project RAD on ferlab-crsj.atlassian.net), use 
 For any feature that touches more than one module, use the `cross-module-feature` skill. The rules:
 
 - The spec lives in `docs/features/RAD-xxxx-<slug>.md` (from `docs/features/0000-template.md`).
-- Use the **same branch name in every impacted repo**: `feat/rad-xxxx-<slug>`.
-- Run git and gh **inside the module**: `git -C etl …`, `cd portal && gh pr create`, or `gh --repo radiant-network/<repo>`. Running `gh pr create` at the hub root targets the hub.
+- Use the **same branch name in every impacted repo** (format: see the `git` rule).
+- Run git and gh from inside the module (see the `bash-commands` rule). At the hub root, they act on the hub.
 - Open **one PR per repo**. Each links to the spec and to the sibling PRs.
 - Merge in dependency order: schema / ETL → portal backend → frontend and MCP.
-- Follow each repo's own conventions. The portal enforces CommitLint `type(scope): RAD-### message` and its `.github/pull_request_template.md`.
+- Follow each repo's own conventions, such as the portal's `.github/pull_request_template.md`.
 
 ## Docs placement
 
@@ -54,6 +54,6 @@ For any feature that touches more than one module, use the `cross-module-feature
 
 ## Safety
 
-- Never read `.env` files or secrets in any module (the portal's CLAUDE.md forbids it explicitly).
+- Secrets, tokens and patient data: see the `confidentiality` rule.
 - `bioinfo/*` repos belong to the bioinfo team. Read them freely to understand an output format, but do not push or open PRs there without an explicit request.
 - Infra repos describe real QA/prod environments. Read them freely, but never apply, plan against or push anything there without an explicit request.

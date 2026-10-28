@@ -9,12 +9,7 @@ The template is `docs/stories/story-template.md`. Read it first: its sections an
 
 ## Jira target
 
-- Site: `ferlab-crsj.atlassian.net`, cloudId `eab895fe-1598-42e6-8ca8-eaa6fa501dfe`
-- Project: `RAD` (replaces `SJRA` on d3b.atlassian.net since 2026-10-01; older tickets keep their SJRA key)
-- Issue type: `Story`. Jira itself only requires the summary, but the team requires **at least one component**.
-- Components (team rule, at least one): `api` (portal backend), `ui` (portal frontend), `etl`, `mcp`, `nextflow`, `keycloak`. The list may change: when in doubt, check `allowedValues` of `components` with `getJiraIssueTypeMetaWithFields` (project `RAD`, issue type `Story`, `requiredFieldsOnly: false`).
-
-Use the Atlassian MCP tools (`createJiraIssue`, `searchJiraIssuesUsingJql`, `lookupJiraAccountId`, `getJiraIssue`) of a server that has access to `ferlab-crsj` (the `plugin:engineering:atlassian` server, `mcp__plugin_engineering_atlassian__*`, if the claude.ai connector only has d3b). Load them with ToolSearch if they are deferred.
+Issue type `Story`. Site, project, MCP server and components: see the `jira` rule.
 
 ## 1. Gather
 
@@ -28,7 +23,7 @@ Start from whatever the user gave you (a sentence, notes, a parent epic, an exis
 - **Business risks:** check the ones that apply, one line of detail each.
 - **Class:** Small / Standard / Complex, using the template's criteria. Propose one and say why. More than one module touched (etl, portal, mcp) is a sign of Complex.
 - **Assigned reviewer:** a name.
-- **Components:** at least one. Propose them from the impacted modules (portal backend → `api`, portal frontend → `ui`, `etl`, `mcp`, `nextflow`, `keycloak`) and let the user adjust.
+- **Components:** see the `jira` rule.
 
 If the scope clearly exceeds one implementation plan, say so and propose splitting into several stories.
 
@@ -40,7 +35,7 @@ Check each item of the template's Definition of Ready against the draft. List th
 
 ## 3. Preview and confirm
 
-Show the full description (Markdown, template section order, the "Definition of Ready" checklist with the boxes that pass checked), the summary and the components. Don't include the template's instructions (the italic guidance lines), only the filled content. **Create nothing until the user approves the preview.**
+Show the full description (Markdown, template section order, the "Definition of Ready" checklist with the boxes that pass checked), the summary and the components. Don't include the template's instructions (the italic guidance lines), only the filled content.
 
 Formatting in the description:
 
@@ -55,7 +50,7 @@ Call `createJiraIssue` with:
 - `summary`: the title
 - `description`: the approved content as an ADF document, `contentFormat: "adf"`. Headings are `heading` (level 2), lists are `bulletList`. The acceptance criteria are a `taskList` (`attrs.localId`, e.g. `"ac"`) of `taskItem`s (`attrs: {"localId": "ac-1", "state": "TODO"}`), each holding inline `text` nodes directly, with no `paragraph`. Bold is a `strong` mark.
 - `parent`: the epic key, if the user gave one
-- `additional_fields`: `{"components": [{"name": "api"}, {"name": "ui"}]}` with the approved components. Never create a story without one.
+- `additional_fields`: `{"components": [{"name": "api"}, {"name": "ui"}]}` with the approved components.
 
 Keep the reviewer in the description. Don't set them as assignee unless the user asks.
 

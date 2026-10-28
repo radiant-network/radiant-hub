@@ -6,6 +6,15 @@
 /bioinfo/
 
 # Local-only
+/tmp/
 .claude/settings.local.json
+
+# Genetics sheets, local for now
+/docs/genetic/
+
+# Personal Claude files, never committed
+/.claude/skills/local-*/
+/.claude/agents/local-*.md
+/.claude/rules/local-*.md
 .idea/
 .DS_Store

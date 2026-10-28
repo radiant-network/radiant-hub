@@ -15,22 +15,23 @@ Follow these steps in order. Don't skip the boundary check (step 4): that's wher
 
 ## 2. Branches
 
-Create the same branch in every impacted repo:
+Create the same branch in every impacted repo, one call per line, the last one guarded (see the `bash-commands` rule):
 
 ```sh
-git -C <module> fetch origin
-git -C <module> switch -c feat/rad-xxxx-<slug> origin/main
+cd <module>
+git fetch origin
+[ "$(pwd)" = "<abs path>" ] && git switch -c feat/rad-xxxx-<slug> origin/main
 ```
 
 If a module has uncommitted changes, stop and ask. Don't stash the user's work.
 
 ## 3. Implement module by module, in dependency order
 
-The usual order is ETL (schema, data) → portal backend → frontend → MCP. For each module:
+The usual order is ETL (schema, data) → portal backend → frontend → MCP. Delegate a precise task to the `coder` agent (`model: opus` when the task has gaps or the module is new to you). Code directly when this session already holds the analysis: the agent starts cold. For each module:
 
 - Follow its own `CLAUDE.md`: commands, tests, conventions (e.g. the portal regenerates API clients after changing the backend spec).
 - Run that module's tests before moving on.
-- Commit inside the module using its commit convention.
+- Propose the commit inside the module (see the `git` rule).
 
 ## 4. Check both sides of each boundary
 
@@ -38,7 +39,7 @@ For every boundary item that the spec changes (StarRocks tables/columns, enum va
 
 ## 5. PRs
 
-- Only push and open PRs when the user asks.
-- Run `gh pr create` **inside each module** (or pass `--repo radiant-network/<repo>`), never at the hub root.
+- Before the first push, offer to run the `reviewer` agent on the ticket.
+- Open each PR on the module's repo, never the hub's (see Cross-module work in `CLAUDE.md`).
 - Open them in merge order. Each description links to the spec and to the sibling PRs.
 - Use the module's PR template where one exists (the portal requires `.github/pull_request_template.md`).
