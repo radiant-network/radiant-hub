@@ -18,3 +18,5 @@
 /.claude/rules/local-*.md
 .idea/
 .DS_Store
+go.work
+go.work.sum
