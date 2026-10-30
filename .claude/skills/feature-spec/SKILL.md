@@ -60,11 +60,11 @@ Do not write code. Do not create branches. Do not commit unless the user asks.
 - **No appendices, no Linked PRs, no extra sections.** Content that the template has no section for usually does not belong in the spec.
 - Section by section:
   - **Story:** link, reviewer, status, one branch `feat/rad-xxxx-<slug>` for all repos.
-  - **Chosen approach:** a one-line **Summary**, then a module table (see section 4). Per module: the approach and the integration point (the existing component it plugs into, by name). No rejected alternatives section.
+  - **Chosen approach:** a one-line **Summary**, then one `### <module>` subsection per module with a bullet list (`- **Label:** …`), no table and no diagram (see `RAD-93-slivar-inheritance.md`). Per module: the approach and the integration point (the existing component it plugs into, by name). No rejected alternatives section.
   - **Modules impacted:** one row per module. The areas (components, not file paths) in one cell, comma-separated.
   - **Tasks:** the template table. One task = one intent = usually one PR. Code, IaC and docs only. Operations (deploy, scripts to run, account setup, QA checks, first load) go in the rollout order. Add a Labels or UX task when the story needs one, or say why not in one line.
-  - **Boundaries:** a change to a StarRocks table or column, an enum value, or an API endpoint or field goes in the module row of **Chosen approach**, with its readers and its migration or compatibility note.
-  - **Pipeline job input:** when the story adds a job, give its run config in the module row of **Chosen approach**: each param with its type, whether it is required, its use, and one example. Follow the param names of the existing jobs.
+  - **Boundaries:** a change to a StarRocks table or column, an enum value, or an API endpoint or field goes in the module subsection of **Chosen approach**, with its readers and its migration or compatibility note.
+  - **Pipeline job input:** when the story adds a job, give its run config in the module subsection of **Chosen approach**: each param with its type, whether it is required, its use, and one example. Follow the param names of the existing jobs.
   - **Merge and rollout order:** a short numbered list, as in the template. For each step: what, and what breaks if it is skipped. Then one line on backfill and feature flags.
   - **Test strategy:** module table `| Module | How the story is proven |`. Tag each bullet with the AC it proves. Add a `QA (manual)` row for the checks by hand.
   - **Risks and coverage:** one row per business risk of the story. If the story checks none, say so in one line.
@@ -74,7 +74,7 @@ Do not write code. Do not create branches. Do not commit unless the user asks.
 ## 4. Write for humans
 
 - Short sentences, active voice, one idea per sentence (ASD-STE100 style).
-- **Scope lists by module, in tables.** Prefer a two-column table over a bullet list: the left column is the module (`portal (backend)`, `etl`, `portal (frontend)`, `mcp`, `infra`, `bioinfo`), the right column holds the bullets for that module.
+- **Scope lists by module, in tables** (except **Chosen approach**, see section 3). Prefer a two-column table over a bullet list: the left column is the module (`portal (backend)`, `etl`, `portal (frontend)`, `mcp`, `infra`, `bioinfo`), the right column holds the bullets for that module.
   - In a cell, write `• item<br>`, and `&nbsp;&nbsp;◦ sub-item<br>` for a sub-item. Bold the label at the start of a bullet (`• **Storage:** …`).
   - Omit a module row when it has nothing to say.
   - Check that every row has the same number of columns. A `|` inside a cell breaks the table.
@@ -102,7 +102,7 @@ Do not write code. Do not create branches. Do not commit unless the user asks.
 
 ## 6. Record the decisions
 
-- When the user decides, write the decision into the row of the module in **Chosen approach**. Drop the options that are not chosen; mention one only when it stays a fallback ("It stays the fallback if …").
+- When the user decides, write the decision into the module subsection of **Chosen approach**. Drop the options that are not chosen; mention one only when it stays a fallback ("It stays the fallback if …").
 - When all the decisions are made, remove `## Options considered` and every option code (A4, B1, …). Check:
 
   ```sh
