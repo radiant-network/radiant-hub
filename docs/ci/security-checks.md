@@ -5,7 +5,7 @@ Which GitHub Actions check the security of the Radiant repos, when they run, wha
 | Repo | Status |
 |---|---|
 | radiant-mcp | In place |
-| radiant-portal | Planned (same setup, thresholds per ecosystem, several Dockerfiles) |
+| radiant-portal | In place (thresholds per ecosystem, 6 images) |
 | radiant-portal-pipeline (etl), infra, bioinfo | Not covered |
 
 ## Overview
@@ -34,9 +34,9 @@ Two different questions:
 
 | Workflow (file) | Runs | Checks | Blocks merge | Notifies |
 |---|---|---|---|---|
-| Dependency Review (`dependency-review.yml`) | Every PR to `main` | Dependencies the PR **adds or bumps**, against the GitHub Advisory Database. Fails at or above `fail-on-severity`. Lower severities are listed in the job summary. | Yes, required status check `dependency-review` | No |
-| Trivy (`trivy.yml`) | PR to `main`, push to `main` | The image built from the Dockerfile (OS packages, installed packages, binaries bundled in wheels) and the Dockerfile configuration (e.g. root user). High and critical, only vulnerabilities with a fix (`ignore-unfixed`). | Yes, if the PR adds a high or critical alert (ruleset rule *Require code scanning results*) | No. Results in Security → Code scanning and in the PR's `Trivy` check |
-| Trivy (`trivy.yml`) | Weekdays 11:00 UTC, manual | The image published on ghcr with the `latest` tag, to catch vulnerabilities disclosed after it was built | No | No. Updates the code scanning alerts of `main` |
+| Dependency Review (`dependency-review.yml`) | Every PR to `main` | Dependencies the PR **adds or bumps**, against the GitHub Advisory Database. mcp: fails at or above `fail-on-severity`. Portal: the action runs in `warn-only` and a second step fails at or above the threshold of each ecosystem (`THRESHOLDS`). Lower severities are listed in the job summary. | Yes, required status check `dependency-review` | No |
+| Trivy (`trivy.yml`) | PR to `main`, push to `main` | The images built from the Dockerfiles (OS packages, installed packages, binaries bundled in wheels) and the Dockerfile configuration (e.g. root user). Only vulnerabilities with a fix (`ignore-unfixed`). The portal scans its 6 images in parallel, each one twice: OS packages and application packages, with their own severity. | Yes, if the PR adds a high or critical alert (ruleset rule *Require code scanning results*) | No. Results in Security → Code scanning and in the PR's `Trivy` check |
+| Trivy (`trivy.yml`) | Weekdays 11:00 UTC, manual | The images published on ghcr with the `latest` tag, to catch vulnerabilities disclosed after they were built | No | No. Updates the code scanning alerts of `main` |
 | Security Alerts (`dependabot-alerts.yml`) | Weekdays 11:30 UTC, manual | Open alerts of `main`: Dependabot at or above `DEPENDABOT_THRESHOLDS`, Trivy at `TRIVY_SEVERITIES` | No | Yes: issue labelled `dependabot-gate` (created, updated, closed when empty) and a Slack message while alerts remain |
 
 11:00 UTC is 7:00 in Montréal during daylight saving time, 6:00 otherwise.
@@ -48,17 +48,22 @@ Dependabot itself (not a workflow) raises the alerts as soon as an advisory is p
 | Source | Blocks / reports at | Where it is set |
 |---|---|---|
 | Python (mcp) | high, critical | `fail-on-severity` in `dependency-review.yml`, `DEPENDABOT_THRESHOLDS` in `dependabot-alerts.yml` |
-| Go (portal) | high, critical | same files in the portal |
-| npm (portal) | critical | same files in the portal |
-| Trivy (image and Dockerfile) | high, critical, with a fix available | `severity` / `ignore-unfixed` in `trivy.yml`, ruleset rule, `TRIVY_SEVERITIES` |
+| Go (portal backend) | high, critical | `THRESHOLDS` (`gomod`) in `dependency-review.yml`, `DEPENDABOT_THRESHOLDS` in `dependabot-alerts.yml` |
+| npm (portal frontend) | critical | same, `npm` |
+| Python (portal, generated client `cli/python`) | high, critical | same, `pip`. The client only declares minimum versions: the installed versions are checked in the consumers' lockfiles (e.g. mcp's `uv.lock`) |
+| Trivy, OS packages and Dockerfiles | high, critical, with a fix available | `severity` / `ignore-unfixed` in `trivy.yml`, ruleset rule, `TRIVY_SEVERITIES` |
+| Trivy, application packages | high, critical; **critical** for the npm packages of the portal frontend image, to match `dependency-review` | `library-severity` in the matrix of the portal's `trivy.yml` |
 
-## Ruleset of `main`
+The code scanning rule has a single threshold for all Trivy alerts (High or higher). A lower bar for one package type is set at scan time: Trivy only uploads what passes its `severity`, so what it filters out can never block.
 
-Settings → Rules → Rulesets → `main`:
+## Protection of `main`
 
-- Pull request required (squash or rebase), no deletion, no force push.
+radiant-mcp: ruleset `main` (Settings → Rules → Rulesets). radiant-portal: ruleset `security-checks`, on top of the classic branch protection (which requires `build`). Both have:
+
+
+- mcp only: pull request required (squash or rebase), no deletion, no force push.
 - Required status check `dependency-review` (GitHub Actions only, the branch does not need to be up to date).
-- Require code scanning results: tool `Trivy`, security alerts **High or higher**, other alerts none. Only alerts that the PR adds count, compared with the last analysis of `main`.
+- Require code scanning results: tool `Trivy`, security alerts **High or higher**, other alerts none. Only alerts that the PR adds count, compared with the last analysis of `main`. The rule needs results for every category on each PR, so every image is scanned on every PR.
 - No bypass actor: an admin cannot merge a PR that fails either rule.
 
 ## When a PR is blocked
