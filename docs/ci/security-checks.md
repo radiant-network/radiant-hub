@@ -6,7 +6,7 @@ Which GitHub Actions check the security of the Radiant repos, when they run, wha
 |---|---|
 | radiant-mcp | In place |
 | radiant-portal | In place (thresholds per ecosystem, 6 images) |
-| radiant-portal-pipeline (etl) | In place (4 images) |
+| radiant-portal-pipeline (etl) | In place (3 images) |
 | infra, bioinfo | Not covered |
 
 ## Overview
@@ -36,7 +36,7 @@ Two different questions:
 | Workflow (file) | Runs | Checks | Blocks merge | Notifies |
 |---|---|---|---|---|
 | Dependency Review (`dependency-review.yml`) | Every PR to `main` | Dependencies the PR **adds or bumps**, against the GitHub Advisory Database. mcp and etl: fails at or above `fail-on-severity`. Portal: the action runs in `warn-only` and a second step fails at or above the threshold of each ecosystem (`THRESHOLDS`). Lower severities are listed in the job summary. | Yes, required status check `dependency-review` | No |
-| Trivy (`trivy.yml`) | PR to `main`, push to `main` | The images built from the Dockerfiles (OS packages, installed packages, binaries bundled in wheels) and the Dockerfile configuration (e.g. root user). Only vulnerabilities with a fix (`ignore-unfixed`). The etl scans its 4 images (airflow, task operator, dbt, Nextflow launcher) in parallel. The portal scans its 6 images in parallel, each one twice: OS packages and application packages, with their own severity. | Yes, if the PR adds a high or critical alert (ruleset rule *Require code scanning results*) | No. Results in Security → Code scanning and in the PR's `Trivy` check |
+| Trivy (`trivy.yml`) | PR to `main`, push to `main` | The images built from the Dockerfiles (OS packages, installed packages, binaries bundled in wheels) and the Dockerfile configuration (e.g. root user). Only vulnerabilities with a fix (`ignore-unfixed`). The etl scans the 3 images its deployments run (task operator, dbt, Nextflow launcher) in parallel; the root `Dockerfile` (`radiant-airflow`) is only for the local docker compose, and is neither published nor scanned. The portal scans its 6 images in parallel, each one twice: OS packages and application packages, with their own severity. | Yes, if the PR adds a high or critical alert (ruleset rule *Require code scanning results*) | No. Results in Security → Code scanning and in the PR's `Trivy` check |
 | Trivy (`trivy.yml`) | Weekdays 11:00 UTC, manual | The images published on ghcr with the `latest` tag, to catch vulnerabilities disclosed after they were built | No | No. Updates the code scanning alerts of `main` |
 | Security Alerts (`dependabot-alerts.yml`) | Weekdays 11:30 UTC, manual | Open alerts of `main`: Dependabot at or above `DEPENDABOT_THRESHOLDS`, Trivy at `TRIVY_SEVERITIES` | No | Yes: issue labelled `dependabot-gate` (created, updated, closed when empty) and a Slack message while alerts remain. In the etl, each list of the issue is cut to fit GitHub's 65536-character limit, critical first, with a link to the Security tab for the rest |
 
@@ -64,7 +64,7 @@ radiant-mcp: ruleset `main` (Settings → Rules → Rulesets). radiant-portal an
 
 - mcp only: pull request required (squash or rebase), no deletion, no force push.
 - Required status check `dependency-review` (GitHub Actions only, the branch does not need to be up to date).
-- Require code scanning results: tool `Trivy`, security alerts **High or higher**, other alerts none. Only alerts that the PR adds count, compared with the last analysis of `main`. The rule needs results for every category on each PR, so every image is scanned on every PR.
+- Require code scanning results: tool `Trivy`, security alerts **High or higher**, other alerts none. Only alerts that the PR adds count, compared with the last analysis of `main`. The rule needs results for every category on each PR, so every image is scanned on every PR. When an image stops being scanned, delete its category in Security → Code scanning → Tool status (or delete its analyses through the API): otherwise its alerts stay open and the rule reports the configuration as missing on every PR.
 - No bypass actor: an admin cannot merge a PR that fails either rule.
 
 ## When a PR is blocked
@@ -76,7 +76,7 @@ radiant-mcp: ruleset `main` (Settings → Rules → Rulesets). radiant-portal an
 
 | Credential | Used by | Why |
 |---|---|---|
-| GitHub App `radiant-dependabot-alerts` (Dependabot alerts: read). Org variable `DEPENDABOT_APP_CLIENT_ID` (mcp) or org secret `DEPENDABOT_APP_ID` (portal, etl, deprecated `app-id` input), org secret `DEPENDABOT_APP_PRIVATE_KEY` | Security Alerts | The `GITHUB_TOKEN` gets HTTP 403 on the Dependabot alerts API |
+| GitHub App `radiant-dependabot-alerts` (Dependabot alerts: read). Org variable `DEPENDABOT_APP_CLIENT_ID` (mcp, etl) or org secret `DEPENDABOT_APP_ID` (portal, deprecated `app-id` input), org secret `DEPENDABOT_APP_PRIVATE_KEY` | Security Alerts | The `GITHUB_TOKEN` gets HTTP 403 on the Dependabot alerts API |
 | `GITHUB_TOKEN` (`issues: write`, `security-events: read` / `write`) | Security Alerts (issue, code scanning alerts), Trivy (SARIF upload) | |
 | `SLACK_SECURITY_WEBHOOK` (org secret) | Security Alerts | Incoming webhook of the `cqgc` Slack app. The workspace has reached its app limit, so add webhooks to `cqgc` rather than creating an app |
 | GitHub App `radiant-release-please` (contents, pull requests, issues: write). Org variable `RELEASE_PLEASE_APP_CLIENT_ID`, org secret `RELEASE_PLEASE_APP_PRIVATE_KEY` | Release Please (not a security check) | Tags and PRs created with the `GITHUB_TOKEN` don't trigger other workflows |
