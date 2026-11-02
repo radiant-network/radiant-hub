@@ -4,7 +4,7 @@
 
 - **Link:** [RAD-163](https://ferlab-crsj.atlassian.net/browse/RAD-163)
 - **Assigned reviewer:** Karl RITCHIE
-- **Status:** In review
+- **Status:** Approved
 - **Branch (all repos):** `feat/rad-163-cnv-gnomad-sv-frequencies`
 
 ## Chosen approach
@@ -13,7 +13,7 @@
 
 | Module | Approach |
 |---|---|
-| etl | • **Column:** `gnomad_ac` (INT, NULL) on `germline__cnv__occurrence` and `somatic__cnv__occurrence`, appended after the last gnomAD column. Both tables are per tenant.<br>• **Value:** `ac` of the gnomAD SV call that the CNV already matches (same chromosome, DEL / DUP from the CNV type, 80% reciprocal overlap, best call by AF then SF). QA and prod read the same `gnomad_sv_v1`, which publishes `ac` (filled on QA, checked on 2026-10-30; same source in prod, confirmed by Karl RITCHIE). No new join: the existing gnomAD SV join of the ingest and re-annotation statements carries one more column.<br>• **No match:** the CNV keeps NULL in all the gnomAD columns. This is already the behaviour for AF, SC and SF; the tests pin it for AC.<br>• **Migration:** a manual add-column script for every `{tenant}_tenant` database, in the existing migrations folder. The occurrence inserts are positional, so the column order must match the create statements.<br>• **Backfill:** the re-annotation statements fill `gnomad_ac` on the existing partitions when the CNV branch of `reannotate_open_data` runs. Its gates watch the open-data sources, not the code, and gnomAD SV does not move with this story: one manual run with `force_reannotation` opens it, once per environment. This is the documented use of the param after a statement change, and it needs no code. It rebuilds every branch of every tenant and holds the import lock for the whole run: no `import_part` runs meanwhile, so the run is planned at a time when no import is expected. |
+| etl | • **Column:** `gnomad_ac` (INT, NULL) on `germline__cnv__occurrence` and `somatic__cnv__occurrence`, appended after the last gnomAD column. Both tables are per tenant.<br>• **Value:** `ac` of the gnomAD SV call that the CNV already matches (same chromosome, DEL / DUP from the CNV type, 80% reciprocal overlap, best call by AF then SF). QA, staging and prod read the same `gnomad_sv_v1`, which publishes `ac` (filled on QA, checked on 2026-10-30; same source in staging and prod, confirmed by Karl RITCHIE). No new join: the existing gnomAD SV join of the ingest and re-annotation statements carries one more column.<br>• **No match:** the CNV keeps NULL in all the gnomAD columns. This is already the behaviour for AF, SC and SF; the tests pin it for AC.<br>• **Migration:** a manual add-column script for every `{tenant}_tenant` database, in the existing migrations folder. The occurrence inserts are positional, so the column order must match the create statements.<br>• **Backfill:** the re-annotation statements fill `gnomad_ac` on the existing partitions when the CNV branch of `reannotate_open_data` runs. Its gates watch the open-data sources, not the code, and gnomAD SV does not move with this story: one manual run with `force_reannotation` opens it, once per environment. This is the documented use of the param after a statement change, and it needs no code. It rebuilds every branch of every tenant and holds the import lock for the whole run: no `import_part` runs meanwhile, so the run is planned at a time when no import is expected. |
 | portal (backend) | • **Fields:** `gnomad_af` (decimal) and `gnomad_ac` (integer) on the germline and somatic CNV occurrence endpoints. Selectable, sortable and filterable, with the same flags as the existing `gnomad_sc` and `gnomad_sf`.<br>• **Not default fields:** AF and AC stay out of the default selection. The API selects only the default fields plus the ones the client asks for, and the CNV endpoints have no select-all path and no export. So a backend deployed before the migration breaks only a request that shows, sorts or filters AC, not the whole CNV table.<br>• **Integration point:** the CNV occurrence field lists. The columns are on the occurrence table, so no join is added.<br>• **Contract:** additive optional response fields. Swagger, TS client and Python client are regenerated. |
 | portal (frontend) | • **Columns:** gnomAD AF, AC and SC in the germline CNV table, next to the existing SF column. Hidden columns are fetched only when shown, through the existing column settings.<br>• **Visibility:** SF stays visible by default; AF, AC and SC hidden by default (to confirm in grooming).<br>• **Labels:** EN and FR label and tooltip for each column. The SF tooltip says « site frequency » / « fréquence de site » instead of « Allele Frequency ».<br>• **Saved column settings:** the settings a user saved replace the defaults when they load. A column they do not know is then shown at the end of the table, empty (its value is not requested from the API), with its box unchecked. The shared data table completes the saved settings with the defaults: a column they do not know takes its default visibility and position. This fixes every table of the portal, for this story and the next new column. The user reset of the column settings stays the fallback.<br>• **Somatic:** no view, the portal has no somatic CNV table. |
 
@@ -80,10 +80,9 @@ The story checks no business risk.
 | | |
 |---|---|
 | Reviewer | Karl RITCHIE |
-| Date | … |
-| Plan review duration | … min |
-| Decision | Approved / Approved with adjustments / Rework needed |
-| Comments | … |
+| Date | 2026-10-30 |
+| Decision | Approved |
+| Comments | Also approved by jecos on PR #26. |
 
 ## Deviation log
 
