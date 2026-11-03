@@ -66,18 +66,18 @@ Do not write code. Do not create branches. Do not commit unless the user asks.
   - **Boundaries:** a change to a StarRocks table or column, an enum value, or an API endpoint or field goes in the module subsection of **Chosen approach**, with its readers and its migration or compatibility note.
   - **Pipeline job input:** when the story adds a job, give its run config in the module subsection of **Chosen approach**: each param with its type, whether it is required, its use, and one example. Follow the param names of the existing jobs.
   - **Merge and rollout order:** a short numbered list, as in the template. For each step: what, and what breaks if it is skipped. Then one line on backfill and feature flags.
-  - **Test strategy:** module table `| Module | How the story is proven |`. Tag each bullet with the AC it proves. Add a `QA (manual)` row for the checks by hand.
+  - **Test strategy:** module subsections (see section 4). Tag each bullet with the AC it proves. Add a `### QA (manual)` subsection for the checks by hand.
   - **Risks and coverage:** one row per business risk of the story. If the story checks none, say so in one line.
-  - **Frozen scope:** module table `| Module | Not covered |`. Use an `all` row for cross-module items.
-  - **Open questions:** module table `| Module | Questions |`, each question with its proposal when you have one. Use a `story / product` row for questions that no module owns.
+  - **Frozen scope:** module subsections. Use an `### all` subsection for cross-module items.
+  - **Open questions:** module subsections, each question with its proposal when you have one. Use a `### story / product` subsection for questions that no module owns.
 
 ## 4. Write for humans
 
 - Short sentences, active voice, one idea per sentence (ASD-STE100 style).
-- **Scope lists by module, in tables** (except **Chosen approach**, see section 3). Prefer a two-column table over a bullet list: the left column is the module (`portal (backend)`, `etl`, `portal (frontend)`, `mcp`, `infra`, `bioinfo`), the right column holds the bullets for that module.
-  - In a cell, write `• item<br>`, and `&nbsp;&nbsp;◦ sub-item<br>` for a sub-item. Bold the label at the start of a bullet (`• **Storage:** …`).
-  - Omit a module row when it has nothing to say.
-  - Check that every row has the same number of columns. A `|` inside a cell breaks the table.
+- **Scope lists by module, in subsections:** one `### <module>` (`etl`, `portal (backend)`, `portal (frontend)`, `mcp`, `infra`, `bioinfo`) with a `-` bullet list, one bullet per line. Never `<br>` bullets in a table cell: one line per bullet keeps the diff and the review comments line by line.
+  - Bold the label at the start of a bullet (`- **Storage:** …`). Indent a sub-item by two spaces.
+  - Omit a module subsection when it has nothing to say.
+  - Keep tables for short one-line cells (Modules impacted, Tasks, Risks). Check that every row has the same number of columns: a `|` inside a cell breaks the table.
 - Each bullet is one or two short sentences.
 - **Do not include:**
   - references to code files: no file paths, no `path:line`, no function, type or variable names. Name the component in plain words instead (for example "the existing gene search", not the function name and its file). Keep the names that other modules or users rely on: tables, columns, endpoints, query fields, permissions, job names, config flags;

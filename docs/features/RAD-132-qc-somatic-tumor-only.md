@@ -11,11 +11,30 @@
 
 **Summary:** the QC cases DAG also selects the somatic tumor-only cases. Each one adds one row to the same samplesheet: the tumor sample, declared as a `VCF` row that points at a shared empty placeholder VCF, with its DRAGEN metrics in `dragenMetrics`. In DRAGEN mode the pipeline only checks that a VCF row's file exists, and runs somalier on `CRAM` / `BAM` rows only, so the tumor gets its DRAGEN sections and no somalier. Germline rows do not change. This is the widening that SJRA-1879 decision 6 planned.
 
-| Module | Approach |
-|---|---|
-| etl | • **Selection:** the pending QC query also returns the somatic cases (not draft or revoked) and the current `alignment_somatic_variant_calling` task of their tumor experiment. Same supersession policy as germline: newest completed experiment, newest alignment per experiment. Same anti-join: no `quality_control_metrics` task on that (case, experiment). It stays one query: the case CTE takes both case types, and the experiment and alignment CTEs pick the tumor experiment and its alignment task for somatic cases, so the DAG and the scheduler keep one source.<br>• **Tumor-only:** a somatic case is a candidate only when it holds no normal experiment. Tumor-normal cases are never returned, and nothing is logged for them.<br>• **Inputs from the alignment:** the CRAM, its index and the `ssup` / `tgz` tarball, picked exactly as for germline. A somatic case with no tarball is excluded as `no_metrics` and logged. It has no CRAM-directory fallback: that fallback gives a green run with an empty report.<br>• **Samplesheet row:** `fileType = VCF`, `file1` = the placeholder, no `file2`, `status = 1`, `familyId = CA<case id>`, `relationship_to_proband = Proband`, `dragenMetrics` = the tarball. The other columns come from the case as for germline.<br>• **Placeholder path:** a new env var, `NEXTFLOW_QC_PLACEHOLDER_VCF`, holds its pod path. It is a pod path, not an S3 URI, because the file lives on the reference mount, not under the inputs bucket. Default: `/workspace/reference/qc/placeholder.vcf.gz`.<br>• **Single run:** germline and somatic rows go into the one samplesheet and the one launcher run that RAD-110 introduced.<br>• **Check after the run:** output collection checks that the report archive holds DRAGEN mapping metrics for each somatic aliquot. A case that fails is not registered and is logged at ERROR; the other cases of the run are registered. That case stays pending, so it runs again each night until its data is fixed.<br>• **Registration:** unchanged batch body. One `quality_control_metrics` task per somatic case, bound to the tumor aliquot, with the CRAM, its index and the tarball as `input_documents`. The placeholder is in no clinical document, so it never appears there.<br>• **Targeted rerun:** `task_ids` also accepts `alignment_somatic_variant_calling` ids.<br>• **Pipeline pin:** bumped from `v2.1.0-beta.1` to commit `77d819e` of `main`, which contains BIOINFO-243 (the DRAGEN CNV table of the report); no tag contains it yet. The launcher image takes the full SHA (`77d819e5cc141b9920511d16ba6f03010e6cf527`) and the QC batch module the short one, as for the SNV and CNV pipelines, so the tasks record `77d819e` as `pipeline_version`. A comment next to the pin says that the somatic rows rely on VCF rows not being read in DRAGEN mode.<br>• **Case scheduler:** no code change. It counts QC work with the QC selection, so somatic cases waiting for QC now move to `processing` like germline ones.<br>• **Docs:** the QC cases DAG doc (somatic path, placeholder, `no_metrics`, `task_ids`), the case scheduler doc ("QC is germline only" goes), the ETL `CLAUDE.md` line on QC, and SJRA-1879 decision 6 ("widened by RAD-132", and why the row is a placeholder VCF). |
-| infra | • **Placeholder file:** an empty `placeholder.vcf.gz` (0 bytes, no index) in the reference bucket at `qc/placeholder.vcf.gz`. The `prewarm-reference` CronJob copies `/workspace/reference` generically, so it needs no change. QA, then prod.<br>• **QC README:** lists the placeholder as a prerequisite, next to `somalier_sites`. Infra PR on explicit request only. |
-| bioinfo | • No change to the pipeline.<br>• The bioinfo team is told that we rely on the DRAGEN-mode VCF row not being read. |
+### etl
+
+- **Selection:** the pending QC query also returns the somatic cases (not draft or revoked) and the current `alignment_somatic_variant_calling` task of their tumor experiment. Same supersession policy as germline: newest completed experiment, newest alignment per experiment. Same anti-join: no `quality_control_metrics` task on that (case, experiment). It stays one query: the case CTE takes both case types, and the experiment and alignment CTEs pick the tumor experiment and its alignment task for somatic cases, so the DAG and the scheduler keep one source.
+- **Tumor-only:** a somatic case is a candidate only when it holds no normal experiment. Tumor-normal cases are never returned, and nothing is logged for them.
+- **Inputs from the alignment:** the CRAM, its index and the `ssup` / `tgz` tarball, picked exactly as for germline. A somatic case with no tarball is excluded as `no_metrics` and logged. It has no CRAM-directory fallback: that fallback gives a green run with an empty report.
+- **Samplesheet row:** `fileType = VCF`, `file1` = the placeholder, no `file2`, `status = 1`, `familyId = CA<case id>`, `relationship_to_proband = Proband`, `dragenMetrics` = the tarball. The other columns come from the case as for germline.
+- **Placeholder path:** a new env var, `NEXTFLOW_QC_PLACEHOLDER_VCF`, holds its pod path. It is a pod path, not an S3 URI, because the file lives on the reference mount, not under the inputs bucket. Default: `/workspace/reference/qc/placeholder.vcf.gz`.
+- **Single run:** germline and somatic rows go into the one samplesheet and the one launcher run that RAD-110 introduced.
+- **Check after the run:** output collection checks that the report archive holds DRAGEN mapping metrics for each somatic aliquot. A case that fails is not registered and is logged at ERROR; the other cases of the run are registered. That case stays pending, so it runs again each night until its data is fixed.
+- **Registration:** unchanged batch body. One `quality_control_metrics` task per somatic case, bound to the tumor aliquot, with the CRAM, its index and the tarball as `input_documents`. The placeholder is in no clinical document, so it never appears there.
+- **Targeted rerun:** `task_ids` also accepts `alignment_somatic_variant_calling` ids.
+- **Pipeline pin:** bumped from `v2.1.0-beta.1` to commit `77d819e` of `main`, which contains BIOINFO-243 (the DRAGEN CNV table of the report); no tag contains it yet. The launcher image takes the full SHA (`77d819e5cc141b9920511d16ba6f03010e6cf527`) and the QC batch module the short one, as for the SNV and CNV pipelines, so the tasks record `77d819e` as `pipeline_version`. A comment next to the pin says that the somatic rows rely on VCF rows not being read in DRAGEN mode.
+- **Case scheduler:** no code change. It counts QC work with the QC selection, so somatic cases waiting for QC now move to `processing` like germline ones.
+- **Docs:** the QC cases DAG doc (somatic path, placeholder, `no_metrics`, `task_ids`), the case scheduler doc ("QC is germline only" goes), the ETL `CLAUDE.md` line on QC, and SJRA-1879 decision 6 ("widened by RAD-132", and why the row is a placeholder VCF).
+
+### infra
+
+- **Placeholder file:** an empty `placeholder.vcf.gz` (0 bytes, no index) in the reference bucket at `qc/placeholder.vcf.gz`. The `prewarm-reference` CronJob copies `/workspace/reference` generically, so it needs no change. QA, then prod.
+- **QC README:** lists the placeholder as a prerequisite, next to `somalier_sites`. Infra PR on explicit request only.
+
+### bioinfo
+
+- No change to the pipeline.
+- The bioinfo team is told that we rely on the DRAGEN-mode VCF row not being read.
 
 ## Modules impacted
 
@@ -46,10 +65,21 @@ No migration, no feature flag. No backfill: the somatic cases already in the cli
 
 ## Test strategy
 
-| Module | How the story is proven |
-|---|---|
-| etl | • **AC1:** integration test of the pending QC query on seeded somatic cases: a tumor-only case with a current alignment is selected; a draft or revoked case, a superseded alignment, a tumor-normal case, and a case that already has a `quality_control_metrics` task are not.<br>• **AC2:** unit test of the samplesheet: the somatic row has `VCF`, the placeholder from the env var, no `file2`, `status = 1`, `CA<case id>` and the tarball.<br>• **AC5 (germline part):** the same test holds a germline family; its rows are byte-identical to the RAD-110 output.<br>• **AC6:** unit test of the batch body: the somatic task is bound to the tumor aliquot, and its inputs hold the CRAM, the index and the tarball, never the placeholder.<br>• **AC8:** unit test of the selection: a somatic case without a tarball is excluded as `no_metrics`, and the reason is logged.<br>• **Genomic risk:** unit test of output collection on a report archive with no mapping metrics for one somatic aliquot: that case is not collected and is logged; the other cases are.<br>• **AC9:** the docs are reviewed in the PR. |
-| QA (manual) | • **AC3:** the placeholder is on the pipeline's mount.<br>• **AC4, AC5:** one nightly run with a germline family and a somatic tumor-only case. The execution trace has no `SOMALIER_EXTRACT` / `SOMALIER_RELATE` task for the tumor sample, and has them for the family.<br>• **AC7:** the somatic report shows the DRAGEN mapping, variant calling and CNV sections, and General Status shows Aln Quality and Contamination with pass or fail. |
+### etl
+
+- **AC1:** integration test of the pending QC query on seeded somatic cases: a tumor-only case with a current alignment is selected; a draft or revoked case, a superseded alignment, a tumor-normal case, and a case that already has a `quality_control_metrics` task are not.
+- **AC2:** unit test of the samplesheet: the somatic row has `VCF`, the placeholder from the env var, no `file2`, `status = 1`, `CA<case id>` and the tarball.
+- **AC5 (germline part):** the same test holds a germline family; its rows are byte-identical to the RAD-110 output.
+- **AC6:** unit test of the batch body: the somatic task is bound to the tumor aliquot, and its inputs hold the CRAM, the index and the tarball, never the placeholder.
+- **AC8:** unit test of the selection: a somatic case without a tarball is excluded as `no_metrics`, and the reason is logged.
+- **Genomic risk:** unit test of output collection on a report archive with no mapping metrics for one somatic aliquot: that case is not collected and is logged; the other cases are.
+- **AC9:** the docs are reviewed in the PR.
+
+### QA (manual)
+
+- **AC3:** the placeholder is on the pipeline's mount.
+- **AC4, AC5:** one nightly run with a germline family and a somatic tumor-only case. The execution trace has no `SOMALIER_EXTRACT` / `SOMALIER_RELATE` task for the tumor sample, and has them for the family.
+- **AC7:** the somatic report shows the DRAGEN mapping, variant calling and CNV sections, and General Status shows Aln Quality and Contamination with pass or fail.
 
 ## Risks and coverage
 
@@ -60,10 +90,21 @@ No migration, no feature flag. No backfill: the somatic cases already in the cli
 
 ## Frozen scope
 
-| Module | Not covered |
-|---|---|
-| all | • Tumor-normal cases (CRAM rows for both samples, somalier between them), including those that also carry a tumor-only analysis. Another ticket.<br>• Calling tasks (`tumor_only_variant_calling`, `somatic_variant_calling`) as the source of QC inputs.<br>• Somatic-specific QC thresholds.<br>• The "na" coverage status on WES (BIOINFO-245).<br>• A "na" sex check on an aneuploid tumor: expected, not a bug.<br>• Any change to the quality-control-pipeline repo. |
-| etl | • No CRAM-directory fallback for somatic rows.<br>• No check after the run for germline rows: their fallback stays logged only.<br>• No change to the germline rows, the germline exclusion reasons or the CRAM-directory fallback of germline members.<br>• No change to how outputs are registered, other than the somatic cases they now cover. |
+### all
+
+- Tumor-normal cases (CRAM rows for both samples, somalier between them), including those that also carry a tumor-only analysis. Another ticket.
+- Calling tasks (`tumor_only_variant_calling`, `somatic_variant_calling`) as the source of QC inputs.
+- Somatic-specific QC thresholds.
+- The "na" coverage status on WES (BIOINFO-245).
+- A "na" sex check on an aneuploid tumor: expected, not a bug.
+- Any change to the quality-control-pipeline repo.
+
+### etl
+
+- No CRAM-directory fallback for somatic rows.
+- No check after the run for germline rows: their fallback stays logged only.
+- No change to the germline rows, the germline exclusion reasons or the CRAM-directory fallback of germline members.
+- No change to how outputs are registered, other than the somatic cases they now cover.
 
 ## Open questions
 
