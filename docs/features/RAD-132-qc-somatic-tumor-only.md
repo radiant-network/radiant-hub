@@ -5,7 +5,7 @@
 - **Link:** [RAD-132](https://ferlab-crsj.atlassian.net/browse/RAD-132) (after [RAD-110](https://ferlab-crsj.atlassian.net/browse/RAD-110))
 - **Assigned reviewer:** TBD
 - **Status:** Draft
-- **Branch (all repos):** `feat/rad-132-qc-somatic-tumor-only`
+- **Branches:** `feat/rad-132-qc-somatic-tumor-only` (hub, this spec), `feat/rad-213-qc-placeholder-vcf` (infra, Task 1), `feat/rad-214-qc-somatic-tumor-only` (etl, Task 2)
 
 ## Chosen approach
 
@@ -19,7 +19,7 @@
 - **Samplesheet row:** `fileType = VCF`, `file1` = the placeholder, no `file2`, `status = 1`, `familyId = CA<case id>`, `relationship_to_proband = Proband`, `dragenMetrics` = the tarball. The other columns come from the case as for germline.
 - **Placeholder path:** a new env var, `NEXTFLOW_QC_PLACEHOLDER_VCF`, holds its pod path. It is a pod path, not an S3 URI, because the file lives on the reference mount, not under the inputs bucket. Default: `/workspace/reference/qc/placeholder.vcf.gz`.
 - **Single run:** germline and somatic rows go into the one samplesheet and the one launcher run that RAD-110 introduced.
-- **Check after the run:** output collection checks that the report archive holds DRAGEN mapping metrics for each somatic aliquot. A case that fails is not registered and is logged at ERROR; the other cases of the run are registered. That case stays pending, so it runs again each night until its data is fixed.
+- **Check after the run:** output collection reads the `<aliquot>.metrics.json` of each somatic aliquot (registered since RAD-180). The pipeline writes it even when it found no DRAGEN mapping metrics, with every `qc_metrics.aln_metrics` field null, so at least one non-null field is required. A case that fails is not registered and is logged at ERROR; the other cases of the run are registered. That case stays pending, so it runs again each night until its data is fixed.
 - **Registration:** unchanged batch body. One `quality_control_metrics` task per somatic case, bound to the tumor aliquot, with the CRAM, its index and the tarball as `input_documents`. The placeholder is in no clinical document, so it never appears there.
 - **Targeted rerun:** `task_ids` also accepts `alignment_somatic_variant_calling` ids.
 - **Pipeline pin:** bumped from `v2.1.0-beta.1` to commit `77d819e` of `main`, which contains BIOINFO-243 (the DRAGEN CNV table of the report); no tag contains it yet. The launcher image takes the full SHA (`77d819e5cc141b9920511d16ba6f03010e6cf527`) and the QC batch module the short one, as for the SNV and CNV pipelines, so the tasks record `77d819e` as `pipeline_version`. A comment next to the pin says that the somatic rows rely on VCF rows not being read in DRAGEN mode.
@@ -72,7 +72,7 @@ No migration, no feature flag. No backfill: the somatic cases already in the cli
 - **AC5 (germline part):** the same test holds a germline family; its rows are byte-identical to the RAD-110 output.
 - **AC6:** unit test of the batch body: the somatic task is bound to the tumor aliquot, and its inputs hold the CRAM, the index and the tarball, never the placeholder.
 - **AC8:** unit test of the selection: a somatic case without a tarball is excluded as `no_metrics`, and the reason is logged.
-- **Genomic risk:** unit test of output collection on a report archive with no mapping metrics for one somatic aliquot: that case is not collected and is logged; the other cases are.
+- **Genomic risk:** unit test of output collection with a metrics.json whose alignment metrics are all null for one somatic aliquot: that case is not collected and is logged; the other cases are.
 - **AC9:** the docs are reviewed in the PR.
 
 ### QA (manual)
@@ -85,7 +85,7 @@ No migration, no feature flag. No backfill: the somatic cases already in the cli
 
 | Risk (from the story) | How it is covered |
 |---|---|
-| Genomic data: the placeholder belongs to no sample, and a missing or misplaced metrics file gives a green run with an empty report | **Missing:** a somatic case with no tarball is excluded as `no_metrics` (no fallback). **Misplaced** (a tarball without files named after the aliquot): the check after the run finds no DRAGEN mapping metrics for the aliquot in the report archive, so the case is not registered and is logged at ERROR. The placeholder is never registered, so no case document points at it. |
+| Genomic data: the placeholder belongs to no sample, and a missing or misplaced metrics file gives a green run with an empty report | **Missing:** a somatic case with no tarball is excluded as `no_metrics` (no fallback). **Misplaced** (a tarball without files named after the aliquot): the check after the run finds only null alignment metrics in the aliquot's metrics.json, so the case is not registered and is logged at ERROR. The placeholder is never registered, so no case document points at it. |
 | Interoperability: we rely on undocumented pipeline behaviour (a DRAGEN-mode VCF row is never read and skips somalier) | A comment next to the pin and a section of the DAG doc say so. Each pin bump re-runs the QA check of AC4 (no somalier task for the tumor in the trace). The bioinfo team is told of the dependency. |
 
 ## Frozen scope
