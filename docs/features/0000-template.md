@@ -13,10 +13,13 @@
 
 ## Chosen approach
 
-Five to ten lines. How we are going to do it, and why this approach rather than another. If an alternative was ruled out, name it in one line with the reason.
+How we are going to do it, and why. A one-line summary, then one subsection per impacted module, one bullet per line.
 
-- Approach: …
-- Rejected alternative: … because …
+**Summary:** …
+
+### etl
+
+- **Label:** …
 
 ## Modules impacted
 
@@ -58,10 +61,15 @@ Migrations, backfills, feature flags, and what breaks if the order is not respec
 
 ## Test strategy
 
-Three to five lines. We don't list the tests; we say how we will prove the story is delivered. The details come with the code.
+We don't list the tests; we say how we will prove the story is delivered. The details come with the code. One subsection per module, plus one for the manual checks.
 
-- **How each acceptance criterion is proven:** at which level (unit, integration, end-to-end) and on which data.
-- **What is not tested automatically, and why:** …
+### etl
+
+- **AC1:** at which level (unit, integration, end-to-end) and on which data.
+
+### QA (manual)
+
+- **ACn:** what is not tested automatically, and why.
 
 ## Risks and coverage
 
@@ -73,11 +81,17 @@ Take each business risk checked in the story and say how the plan covers it.
 
 ## Frozen scope
 
-What this plan does not cover. Restates and sharpens the story's "out of scope" section. Anything that is neither in the plan nor listed here is a deviation.
+What this plan does not cover. Restates and sharpens the story's "out of scope" section. Anything that is neither in the plan nor listed here is a deviation. One subsection per module, `all` for cross-module items.
+
+### all
 
 - …
 
 ## Open questions
+
+One subsection per module, `story / product` for questions no module owns. Each question with its proposal.
+
+### story / product
 
 - …
 
