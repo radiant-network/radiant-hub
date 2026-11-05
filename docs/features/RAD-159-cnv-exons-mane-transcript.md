@@ -23,7 +23,7 @@
 - **Sources:** two new contract sources in `import_open_data`, in the gene group: `ensembl_transcript_v1` (already published, carries `is_canonical` and `is_mane_select` from the GFF3 tags, see its [release notes](https://github.com/radiant-network/radiant-open-datalake/blob/main/spark/doc/release-notes/ensembl_transcript/v1.md)) and `mane_v1`. Both follow the import gates of the other contract sources. No pre-contract table: held back, they read nothing, as `clinvar_rcv`. They are read from the Iceberg catalog and not copied to StarRocks: only the table below has a reader.
 - **Reference transcript:** a new shared table `gene_reference_transcript`, one row per Ensembl gene: `ensembl_gene_id`, `ensembl_transcript_id`, `ensembl_transcript_version`, `is_mane_select`, `refseq_transcript_id`. The transcript is the MANE Select one, else the Ensembl canonical one. `refseq_transcript_id` comes from the `mane_v1` row with the same transcript id and version and the status `MANE Select`; it stays NULL otherwise. In the [Ensembl 114 GFF3](https://ftp.ensembl.org/pub/release-114/gff3/homo_sapiens/), every gene has exactly one canonical transcript, and each of the 19,276 MANE Select transcripts is the canonical one of its gene; all of them have a MANE 1.4 row with the same version. ORM1: `ENST00000259396.9`, 6 exons, `NM_000607.4`.
 - **Rebuild:** the table is rebuilt in full (insert overwrite) after the import of either source, in the gene group of `import_open_data`. The portal reads only this table, so the rule lives in one place.
-- **Data QA:** a dbt test on `gene_reference_transcript` fails when a row has `is_mane_select` true and no `refseq_transcript_id`. It catches a MANE release that does not match the Ensembl release.
+- **Data QA:** two dbt tests on `gene_reference_transcript`. One fails when a row has `is_mane_select` true and no `refseq_transcript_id`: it catches a MANE release that does not match the Ensembl release. The other fails when an `ensembl_gene` gene has no row: it catches an Ensembl release with a gene that has no canonical transcript.
 - **No re-annotation:** the data is gene-level and read at query time. No occurrence table changes.
 
 ### portal (backend)
@@ -31,9 +31,9 @@
 - **Integration point:** the shared exon lookup of the gene track and of `genes_overlap` joins `gene_reference_transcript` on `ensembl_gene_id` and keeps the exons whose `transcript_ids` hold the reference transcript.
 - **Exon count:** `nb_exons` of `genes_overlap` (germline and somatic) counts the exons of the reference transcript that the CNV overlaps. It replaces the interim rule of RAD-156 (the transcript with the most exons).
 - **Gene track:** `GET /{tenant}/genes/track` (RAD-156) draws the exons of the reference transcript, with the same rule.
-- **No reference transcript:** a gene with no row in `gene_reference_transcript` gets `nb_exons` null (shown `-`), not 0.
+- **No reference transcript:** a gene with no row in `gene_reference_transcript` gets `nb_exons` 0. No gene of Ensembl 114 is in that case, and the data QA reports one if a later release brings it.
 - **New field:** `refseq_transcript_id` (string, nullable, versioned, e.g. `NM_000607.4`) on the `genes_overlap` rows and on the gene track genes. Null when the gene has no MANE Select transcript.
-- **Contract:** additive optional field. Swagger, TS client and Python client regenerated. The `nb_exons` value changes, its type does not.
+- **Contract:** additive optional field. Swagger, TS client and Python client regenerated. The `nb_exons` value changes; it stays a required integer.
 
 ### portal (frontend)
 
@@ -80,7 +80,7 @@ No migration of an existing table, no backfill, no feature flag. A later Ensembl
 ### etl
 
 - **AC1, AC4:** StarRocks integration test of the `gene_reference_transcript` build on fixtures: a gene with a MANE Select transcript gets its RefSeq id; a gene with only an Ensembl canonical transcript gets that transcript and no RefSeq.
-- **AC5:** same fixtures with a MANE row of another transcript version: no RefSeq id, and the dbt test fails. The dbt test runs on QA after the load and passes with MANE 1.4 and Ensembl 114.
+- **AC5:** same fixtures with a MANE row of another transcript version: no RefSeq id, and the first dbt test fails. A fixture gene without a canonical transcript fails the second one. Both run on QA after the load and pass with MANE 1.4 and Ensembl 114.
 
 ### portal (backend)
 
