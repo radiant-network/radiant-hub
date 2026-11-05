@@ -12,6 +12,7 @@ radiant-hub/
 ├── etl/               → radiant-portal-pipeline   (own .git)
 ├── portal/            → radiant-portal            (own .git)
 ├── mcp/               → radiant-mcp               (own .git)
+├── opendatalake/      → radiant-open-datalake     (own .git)
 ├── infra/             → optional infra repos      (own .git each)
 └── bioinfo/           → optional Nextflow pipelines run by the ETL (own .git each)
 ```
@@ -20,7 +21,7 @@ radiant-hub/
 
 ```sh
 git clone <this repo> radiant-hub && cd radiant-hub
-make bootstrap                      # clones etl, portal, mcp; asks about each infra and bioinfo repo
+make bootstrap                      # clones etl, portal, mcp, opendatalake; asks about each infra and bioinfo repo
 make bootstrap INFRA=none BIOINFO=none   # no prompt, core repos only
 make bootstrap BIOINFO=all          # also clone every bioinfo pipeline
 make link WORKSPACE=~/workspace     # already have clones? symlink them instead of re-cloning

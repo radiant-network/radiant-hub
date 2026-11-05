@@ -24,7 +24,7 @@ Prod covers every access path: the portal API, the MCP server, the databases (di
 
 ## Public repos
 
-The hub, `portal`, `etl`, `mcp` and the `bioinfo/*` repos are public. Only the `infra/*` repos are private. Never write an internal hostname or URL, an IP, a cloud account, cluster or bucket name, or any QA or prod setting in a committed file, a commit message, a PR or a PR comment. Keep them out of git: in the `env` of `.claude/settings.local.json`, which git ignores, so that commands use `$VAR` without the value appearing anywhere.
+The hub, `portal`, `etl`, `mcp`, `opendatalake` and the `bioinfo/*` repos are public. Only the `infra/*` repos are private. Never write an internal hostname or URL, an IP, a cloud account, cluster or bucket name, or any QA or prod setting in a committed file, a commit message, a PR or a PR comment. Keep them out of git: in the `env` of `.claude/settings.local.json`, which git ignores, so that commands use `$VAR` without the value appearing anywhere.
 
 ## Warn before you read
 
