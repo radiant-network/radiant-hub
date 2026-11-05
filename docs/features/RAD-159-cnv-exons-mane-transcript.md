@@ -3,7 +3,7 @@
 ## Story
 
 - **Link:** [RAD-159](https://ferlab-crsj.atlassian.net/browse/RAD-159)
-- **Assigned reviewer:** **[Name]**
+- **Assigned reviewer:** Karl Ritchie
 - **Status:** Draft
 - **Branch (all repos):** `feat/rad-159-cnv-exons-mane-transcript`
 
@@ -132,7 +132,7 @@ No migration of an existing table, no backfill, no feature flag. A later Ensembl
 
 | | |
 |---|---|
-| Reviewer | **[Name]** |
+| Reviewer | Karl Ritchie |
 | Date | … |
 | Plan review duration | … min |
 | Decision | Approved / Approved with adjustments / Rework needed |
