@@ -17,6 +17,7 @@ Each module has its own `CLAUDE.md`, the reference for its commands, tests and i
 | `etl/` | radiant-portal-pipeline | Airflow ETL: VCF → Iceberg → StarRocks. Owns the StarRocks schema (DDL in `radiant/dags/sql/**/init/`) and data QA (dbt, `radiant/data_qa/`). Python. |
 | `portal/` | radiant-portal | Go REST API (`backend/`) + React 19 frontend monorepo (`frontend/`) + Cypress + Docusaurus. Reads StarRocks. Owns the OpenAPI spec (`backend/docs/swagger.yaml`). |
 | `mcp/` | radiant-mcp | MCP server wrapping upstream `mcp-server-starrocks`. Runs queries under the caller's JWT; optional tools call the portal API. Python. |
+| `opendatalake/` | radiant-open-datalake | OpenDataLake: downloads the public genomics sources (ClinVar, Ensembl, gnomAD…) and publishes them as versioned Iceberg contract tables (`spark/src/main/resources/contracts.yml`). Airflow + Spark (Scala). |
 | `infra/qlin-qa`, `infra/qlin-prod` | Ferlab-Ste-Justine/qlin-*-infra | QA / prod infrastructure as code (Terraform, k8s manifests). Optional. |
 | `infra/deployment` | radiant-portal-deployment | Deployment modules. Optional. |
 | `bioinfo/snv-post-processing`, `bioinfo/cnv-post-processing`, `bioinfo/quality-control-pipeline` | Ferlab-Ste-Justine/* | Bioinformatics Nextflow pipelines that the ETL runs (SNV and CNV post-processing, QC). Owned by the bioinfo team. Optional. |
@@ -27,6 +28,7 @@ See `docs/architecture/overview.md` for the diagram. The boundaries:
 
 - **StarRocks schema**: the ETL writes it. The portal backend and the MCP read it.
 - **Portal API**: the portal defines it (OpenAPI spec `portal/backend/docs/swagger.yaml`). Consumers are the frontend (generated TS client), the MCP (generated `radiant_python` client) and the ETL (`PATCH /{tenant}/cases/batch`).
+- **Open data**: OpenDataLake publishes each source as a contract table `<source>_v<MAJOR>`; a breaking change is a new MAJOR, so a new table. The ETL reads them through `ICEBERG_OPEN_DATA_CONTRACT_MAPPING` in `etl/radiant/tasks/data/radiant_tables.py`.
 - **Nextflow pipelines**: the `bioinfo/*` pipelines write the files (VCFs, QC metrics) that the ETL reads. The ETL pins each revision in `etl/Dockerfile.nextflow.launcher` (`*_PIPELINE_REV`); for SNV and CNV, `ANNOTATION_PIPELINE` in `etl/radiant/tasks/nextflow/{,cnv/}batch.py` repeats it. Bump both together.
 - **Identity**: Keycloak issues the JWTs used by the portal, the MCP, and StarRocks itself (the MCP passes the JWT through).
 

@@ -1,6 +1,6 @@
 ---
 name: impact
-description: Find everything that depends on a cross-module item (StarRocks table or column, enum value, portal API endpoint or field, partitioning rule, JWT claim) and what breaks if it changes. Use for "what are the impacts of renaming / removing / changing X?", and during feature analysis (feature-spec, cross-module-feature) to check that no boundary between modules breaks.
+description: Find everything that depends on a cross-module item (StarRocks table or column, OpenDataLake contract table, enum value, portal API endpoint or field, partitioning rule, JWT claim) and what breaks if it changes. Use for "what are the impacts of renaming / removing / changing X?", and during feature analysis (feature-spec, cross-module-feature) to check that no boundary between modules breaks.
 ---
 
 # Impact
@@ -64,6 +64,10 @@ The swaggo annotations generate `portal/backend/docs/swagger.yaml` (`make doc`).
 ### Nextflow pipeline output (writer: bioinfo)
 
 A file or field produced by `bioinfo/snv-post-processing`, `bioinfo/cnv-post-processing` or `bioinfo/quality-control-pipeline`, or a pipeline revision bump. Readers: the ETL operators and tasks (`etl/radiant/dags/operators/k8s.py`, `etl/radiant/tasks/nextflow/**`). The revision is pinned twice: `*_PIPELINE_REV` in `etl/Dockerfile.nextflow.launcher` and `ANNOTATION_PIPELINE` in `etl/radiant/tasks/nextflow/{,cnv/}batch.py`. If the `bioinfo/*` repo is not checked out, say so and read the pinned revision on GitHub (`gh --repo Ferlab-Ste-Justine/<repo>`).
+
+### Open-data contract table (writer: opendatalake)
+
+A column of a contract table `<source>_v<MAJOR>`, or a new MAJOR. Writer: `opendatalake/spark/src/main/resources/contracts.yml`, the normalizers in `spark/src/main/scala/**/normalized/`, the release notes in `spark/doc/release-notes/<source>/`. Readers: `ICEBERG_OPEN_DATA_CONTRACT_MAPPING` in `etl/radiant/tasks/data/radiant_tables.py`, then every `{{ mapping.iceberg_<source> }}` in `etl/radiant/dags/sql/**`: the open-data inserts, and also the variant and CNV statements that join a source straight from Iceberg. A new MAJOR is a new table: the ETL reads the old one until its mapping moves.
 
 ### Identity
 
