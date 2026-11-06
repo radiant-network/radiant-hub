@@ -27,7 +27,7 @@
   - rsID: lower-case prefix (`RS334` → `rs334`);
   - locus: optional `chr` removed, upper-case;
   - HGVSg: `chr` and `g.` lower-case, nucleotides upper-case;
-  - ClinVar: digits only.
+  - ClinVar: the variation ID only, digits (PO decision).
 - **Access:** the lookup runs with the same identity as the occurrence queries: the calling user when per-user StarRocks reads are on (`STARROCKS_PROXY_READ_ENABLED`, Ranger applies), the portal's own connection otherwise. This is the first portal read of `dbsnp` (see rollout order).
 - **Contract:** additive. Swagger, TS client and Python client regenerated.
 
@@ -38,7 +38,8 @@
 - **Pill:** field `hgvsg`, operator `in`, one HGVSg per value. The pill shows the HGVSg, as the « Variant » column of the tables does (team decision). `hgvsg` is already a filter of the germline and somatic SNV occurrences, so the list, count and aggregate apply it as is.
 - **No dropdown:** the pill uses the existing search pill, as the gene search does. Deleting it removes the filter.
 - **Append:** the pill update replaces its values, so the facet reads the current values, adds the new HGVSg values without duplicates and sends the full list, as the gene search does. Values are OR'd.
-- **Labels:** EN and FR for the facet title, the placeholder, the tooltip (accepted formats) and the pill label.
+- **Run change:** the pill stays when the user switches run (another member or analysis), like the rest of the query (PO decision). Its HGVSg values filter the new run.
+- **Labels:** EN and FR for the facet title, the placeholder, the tooltip (accepted formats) and the pill label, in the same task as the facet.
 
 ## Modules impacted
 
@@ -52,15 +53,14 @@
 | # | Task | Component | Content | Depends on | Shippable alone? |
 |---|---|---|---|---|---|
 | 1 | Search API | portal (backend) | Germline and somatic `search` routes, run-scoped lookup on `snv__variant` and `dbsnp`, input normalisation, swagger and clients, tests | — | yes (no caller yet) |
-| 2 | Labels | portal (frontend) | EN/FR facet title, placeholder, tooltip and pill label, validated by the clinical team | — | yes |
-| 3 | Facet and pill | portal (frontend) | Input and submit facet in the `variant` group, append to one `hgvsg` pill, no dropdown, clear and focus after submit | Tasks 1, 2 | yes, once task 1 is deployed |
+| 2 | Facet and pill | portal (frontend) | Input and submit facet in the `variant` group, append to one `hgvsg` pill, no dropdown, clear and focus after submit, EN/FR labels | Task 1 | yes, once task 1 is deployed |
 
-No UX task: the facet uses the slot of the gene search, and the pill is the existing search pill.
+No UX task: the facet uses the slot of the gene search, and the pill is the existing search pill. No Labels task: the labels ship with the facet that uses them.
 
 ## Merge and rollout order
 
 1. portal backend: task 1. In each environment where per-user reads are on, check that a user account reads `dbsnp` (Ranger policy), as it reads the other shared tables. Without it, every rsID search fails.
-2. portal frontend: tasks 2 and 3, after step 1 in the same environment. Without the route, every submit fails.
+2. portal frontend: task 2, after step 1 in the same environment. Without the route, every submit fails.
 
 No migration, no backfill, no feature flag: the ETL already loads every column used.
 
@@ -100,16 +100,9 @@ The story checks no risk.
 
 - No new query field and no change to the occurrence list, count or aggregate.
 - Locus with `:` separators (`8:43159045:G:A`).
+- ClinVar accession (`VCV000013961`).
 
 ## Open questions
-
-### portal (backend)
-
-- **ClinVar accession.** Accept `VCV000013961` as well as the variation ID `13961`? **Proposal:** the variation ID only; the accession in a later ticket if asked.
-
-### portal (frontend)
-
-- **Run change.** When the user switches run (another member or analysis), what happens to the pill? **Proposal:** keep it. Its HGVSg values stay valid and filter the new run.
 
 ### story / product
 
