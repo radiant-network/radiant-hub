@@ -1,4 +1,4 @@
-# RAD-159: Show the MANE Select RefSeq transcript of each gene in the CNV overlapping genes and the CNV profile gene track
+# RAD-159: Show the MANE Select RefSeq transcript of each gene in the CNV overlapping genes
 
 ## Story
 
@@ -7,9 +7,18 @@
 - **Status:** Draft
 - **Branch (all repos):** `feat/rad-159-cnv-exons-mane-transcript`
 
+### Acceptance criteria
+
+Copied from the story on 2026-11-10, so that `AC1`… below still mean the same thing if the story is renumbered. Case 1000032 (qlin, exome 25354), gain chr9:114,323,130-114,330,584.
+
+- **AC1:** the ORM1 row of the overlapping genes shows `NM_000607.4`.
+- **AC2:** ORM1 shows # Exons 6, counted on `NM_000607.4`, in the table and in the CNV profile gene panel. *The gene panel part is deferred.*
+- **AC3:** a gene with no MANE Select transcript shows `-` as its RefSeq transcript, in the table or in the track. *The track part is deferred.*
+- **AC4:** with MANE 1.4 and Ensembl 114 loaded, the data QA finds every Ensembl 114 MANE Select transcript with its RefSeq id (no transcript version mismatch).
+
 ## Chosen approach
 
-**Summary:** OpenDataLake publishes the NCBI MANE summary as a new contract table. From it and the Ensembl transcripts, the ETL builds one StarRocks table that gives each gene its reference transcript, as the story defines it: MANE Select, else Ensembl canonical. The portal counts the overlapped exons on that transcript and shows its RefSeq id in the CNV overlapping-genes table and in the gene details of the CNV profile.
+**Summary:** OpenDataLake publishes the NCBI MANE summary as a new contract table. From it and the Ensembl transcripts, the ETL builds one StarRocks table that gives each gene its reference transcript, as the story defines it: MANE Select, else Ensembl canonical. The portal counts the overlapped exons on that transcript and shows its RefSeq id in the CNV overlapping-genes table. The CNV profile gene track (RAD-156, RAD-157) is out of this story: see the deviation log.
 
 ### opendatalake (radiant-open-datalake)
 
@@ -28,17 +37,15 @@
 
 ### portal (backend)
 
-- **Integration point:** the shared exon lookup of the gene track and of `genes_overlap` joins `gene_reference_transcript` on `ensembl_gene_id` and keeps the exons whose `transcript_ids` hold the reference transcript.
-- **Exon count:** `nb_exons` of `genes_overlap` (germline and somatic) counts the exons of the reference transcript that the CNV overlaps. It replaces the interim rule of RAD-156 (the transcript with the most exons).
-- **Gene track:** `GET /{tenant}/genes/track` (RAD-156) draws the exons of the reference transcript, with the same rule.
+- **Integration point:** the exon lookup of `genes_overlap` (`cnvGenesOverlapSQL`, germline and somatic) joins `gene_reference_transcript` on `ensembl_gene_id` and keeps the exons whose `transcript_ids` hold the reference transcript. It builds on `main`, with no dependency on RAD-156.
+- **Exon count:** `nb_exons` counts the exons of the reference transcript that the CNV overlaps. It replaces today's count of every distinct exon over all the gene's transcripts (ORM1: 10, then 6).
 - **No reference transcript:** a gene with no row in `gene_reference_transcript` gets `nb_exons` 0. No gene of Ensembl 114 is in that case, and the data QA reports one if a later release brings it.
-- **New field:** `refseq_transcript_id` (string, nullable, versioned, e.g. `NM_000607.4`) on the `genes_overlap` rows and on the gene track genes. Null when the gene has no MANE Select transcript.
+- **New field:** `refseq_transcript_id` (string, nullable, versioned, e.g. `NM_000607.4`) on the `genes_overlap` rows. Null when the gene has no MANE Select transcript.
 - **Contract:** additive optional field. Swagger, TS client and Python client regenerated. The `nb_exons` value changes; it stays a required integer.
 
 ### portal (frontend)
 
 - **Overlapping genes table:** a RefSeq column next to # Exons, `-` when the gene has no MANE Select transcript. The # Exons tooltip says it counts on the MANE Select transcript, else on the Ensembl canonical one.
-- **CNV profile:** the gene details (hover and selection, RAD-157) show the RefSeq id, `-` when empty.
 - **Labels:** EN and FR for the column and the tooltip.
 
 ## Modules impacted
@@ -47,9 +54,9 @@
 |---|---|---|
 | opendatalake | MANE source config and download, `mane_v1` normalizer, contract registry, release notes | new |
 | etl | open-data import (two new sources), `gene_reference_transcript` table and build, data QA | new / modified |
-| portal (backend) | CNV gene overlap, gene track, test fixtures, seed schema, swagger, generated TS and Python clients | modified |
-| portal (frontend) | CNV overlapping-genes table, CNV profile gene details, EN/FR labels | modified |
-| mcp | none: no tool reads the gene overlap or the gene track | — |
+| portal (backend) | CNV gene overlap, test fixtures, seed schema, swagger, generated TS and Python clients | modified |
+| portal (frontend) | CNV overlapping-genes table, EN/FR labels | modified |
+| mcp | none: no tool reads the gene overlap | — |
 
 ## Tasks
 
@@ -57,17 +64,17 @@
 |---|---|---|---|---|---|
 | 1 | MANE contract | opendatalake (Jira `etl`) | Manual source with version, `mane_v1` normalizer, contract entry, release notes, unit spec | — | yes (no reader yet) |
 | 2 | Reference transcript of each gene | etl | Two contract sources, `gene_reference_transcript` DDL and build, data QA test, integration tests | Task 1 | yes, once `mane_v1` is published |
-| 3 | Exon count and RefSeq on the reference transcript | portal (backend) | `genes_overlap` and gene track on the reference transcript, `refseq_transcript_id`, fixtures, seed schema, swagger and clients, tests | Task 2, RAD-156 merged | yes, once task 2 has loaded |
-| 4 | RefSeq in the overlapping genes and the gene details | portal (frontend) | RefSeq column, # Exons tooltip, gene details, EN/FR labels, unit tests | Task 3, RAD-157 merged | yes, once task 3 is deployed |
+| 3 | Exon count and RefSeq on the reference transcript | portal (backend) | `genes_overlap` on the reference transcript, `refseq_transcript_id`, fixtures, seed schema, swagger and clients, tests | Task 2 | yes, once task 2 has loaded |
+| 4 | RefSeq in the overlapping genes | portal (frontend) | RefSeq column, # Exons tooltip, EN/FR labels, unit tests | Task 3 | yes, once task 3 is deployed |
 
-No Labels task: one short label and one tooltip, validated in the task 4 PR. No UX task: the column and the detail line follow the existing ones.
+No Labels task: one short label and one tooltip, validated in the task 4 PR. No UX task: the column follows the existing ones.
 
 ## Merge and rollout order
 
 1. opendatalake: merge task 1, then trigger the MANE download and import with `version=1.4`, QA then prod. Without `mane_v1`, the ETL has nothing to load and every RefSeq stays empty.
 2. etl: check that the ETL's StarRocks account can read `ensembl_transcript_v1` and `mane_v1` in the OpenDataLake catalog, in each environment: no ETL job reads them today, and Ranger refuses them to a user account on QA. Otherwise the build fails. Then merge task 2. Run `init_starrocks_tables` (new table), then `import_open_data`. Then run the data QA. Before this step, the backend of step 3 fails on the missing table.
-3. portal backend: deploy task 3 after step 2 in the same environment, and after RAD-156.
-4. portal frontend: deploy task 4 after step 3 and RAD-157.
+3. portal backend: deploy task 3 after step 2 in the same environment.
+4. portal frontend: deploy task 4 after step 3.
 
 No migration of an existing table, no backfill, no feature flag. A later Ensembl release must come with its matching MANE release; the data QA reports a mismatch.
 
@@ -75,27 +82,26 @@ No migration of an existing table, no backfill, no feature flag. A later Ensembl
 
 ### opendatalake
 
-- **AC5:** unit spec of the normalizer on sample summary rows: ids and versions split, both statuses kept.
+- **AC4:** unit spec of the normalizer on sample summary rows: ids and versions split, both statuses kept.
 
 ### etl
 
-- **AC1, AC4:** StarRocks integration test of the `gene_reference_transcript` build on fixtures: a gene with a MANE Select transcript gets its RefSeq id; a gene with only an Ensembl canonical transcript gets that transcript and no RefSeq.
-- **AC5:** same fixtures with a MANE row of another transcript version: no RefSeq id, and the first dbt test fails. A fixture gene without a canonical transcript fails the second one. Both run on QA after the load and pass with MANE 1.4 and Ensembl 114.
+- **AC1, AC3:** StarRocks integration test of the `gene_reference_transcript` build on fixtures: a gene with a MANE Select transcript gets its RefSeq id; a gene with only an Ensembl canonical transcript gets that transcript and no RefSeq.
+- **AC4:** same fixtures with a MANE row of another transcript version: no RefSeq id, and the first dbt test fails. A fixture gene without a canonical transcript fails the second one. Both run on QA after the load and pass with MANE 1.4 and Ensembl 114.
 
 ### portal (backend)
 
 - **AC1, AC2:** integration test of `genes_overlap` on an ORM1-like fixture: a non-reference transcript adds exons, `nb_exons` counts only those of the reference transcript, `refseq_transcript_id` is returned.
-- **AC3:** same check on `GET /{tenant}/genes/track`.
-- **AC4:** a gene without MANE Select returns a null `refseq_transcript_id`.
+- **AC3:** a gene without MANE Select returns a null `refseq_transcript_id`.
 
 ### portal (frontend)
 
-- **AC1, AC3, AC4:** unit tests of the RefSeq cell and the gene details: the id, or `-` when empty.
+- **AC1, AC3:** unit tests of the RefSeq cell: the id, or `-` when empty.
 
 ### QA (manual)
 
-- **AC1, AC2, AC3:** case 1000032 (qlin, exome 25354), gain chr9:114,323,130-114,330,584: ORM1 shows `NM_000607.4` and # Exons 6 in the table, in the CNV profile gene panel and in the gene details.
-- **AC4:** one overlapping gene without MANE Select (a non-coding gene) shows `-`.
+- **AC1, AC2:** case 1000032 (qlin, exome 25354), gain chr9:114,323,130-114,330,584: ORM1 shows `NM_000607.4` and # Exons 6 in the overlapping genes table.
+- **AC3:** one overlapping gene without MANE Select (a non-coding gene) shows `-`.
 
 ## Risks and coverage
 
@@ -112,11 +118,8 @@ No migration of an existing table, no backfill, no feature flag. A later Ensembl
 - Display of MANE Plus Clinical (kept in `mane_v1`, not shown).
 - Link to the NCBI page of the transcript (deferred).
 - RefSeq in the SNV tables (deferred).
+- The CNV profile gene track (deferred, see the deviation log): the RefSeq id in the gene details on hover or selection, the gene panel part of AC2 and the track part of AC3. Backend side, `GET /{tenant}/genes/track` draws the exons of the reference transcript.
 - An Ensembl release without its matching MANE release: the RefSeq id stays empty and the data QA reports it.
-
-### portal (backend)
-
-- gnomAD pLI and LOEUF of the gene track stay the most constrained over all transcripts. Moving them to the reference transcript is a separate ticket if needed.
 
 ### portal (frontend)
 
@@ -142,4 +145,4 @@ No migration of an existing table, no backfill, no feature flag. A later Ensembl
 
 | Date | Need found | Option A: new ticket (link) | Option B: re-approval (by whom, when) |
 |---|---|---|---|
-| … | … | … | … |
+| 2026-11-10 | The gene track (`GET /{tenant}/genes/track`, RAD-156) exists only in an open draft PR, behind `main`, and RAD-157 has no PR: tasks 3 and 4 could not ship. Scope cut to the overlapping genes table and `genes_overlap`. Deferred: the RefSeq id in the gene details (removed from the story), the gene panel part of AC2 and the track part of AC3. When RAD-156 lands, its gene track should count on `gene_reference_transcript` instead of the transcript with the most exons. | Follow-up ticket for the gene track (to create) | Karl Ritchie, … |
