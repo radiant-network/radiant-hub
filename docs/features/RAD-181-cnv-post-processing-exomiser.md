@@ -59,7 +59,7 @@
 
 | # | Task | Component | Content | Depends on | Shippable alone? |
 |---|---|---|---|---|---|
-| 1 | Load the CNV Exomiser report | etl | Staging view branch, load of CNV annotation tasks, `raw_exomiser_cnv` DDL and copy, `exomiser_cnv` tenant table and insert, Iceberg `vcf_id`, occurrence insert join and columns, migration and staging backfill, data QA, unit tests, integration tests on a CNV Exomiser TSV fixture | — | yes: the portal does not read the columns until task 2 |
+| 1 | Load the CNV Exomiser report | etl | Staging view branch, load of CNV annotation tasks, `raw_exomiser_cnv` DDL and copy, `exomiser_cnv` tenant table and insert, Iceberg `vcf_id`, occurrence insert join and columns, migration and staging backfill, data QA, unit tests, integration tests on a CNV Exomiser TSV fixture | RAD-169 merged and its migration run | yes once RAD-169 is deployed: the portal does not read the columns until task 2 |
 | 2 | Expose the CNV Exomiser fields | portal (backend) | Fields, test DDL and fixtures, swagger and clients (2nd commit), integration tests | Task 1 migration run in each environment | yes once the migration has run |
 | 3 | Show the CNV Exomiser result | portal (frontend) | Columns, cells, facets, column settings, missing EN/FR keys | Task 2 | yes once task 2 is deployed |
 
@@ -67,15 +67,16 @@ No UX task: the columns and facets reuse the SNV components. No separate Labels 
 
 ## Merge and rollout order
 
-1. etl: task 1. In each environment, with no import running (full steps: `radiant-portal-pipeline` `radiant/dags/sql/radiant/migrations/RAD-256_germline_cnv_occurrence_add_exomiser.sql`):
+1. etl: RAD-169 (etl branch `feat/rad-206`) merged and released, and its migration run in each environment, before anything below. The six columns go after its `father_*` columns and the insert is positional: without them the insert fails on the column count, and with its ALTER run after this one the columns are out of order.
+2. etl: task 1. In each environment, with no import running (full steps: `radiant-portal-pipeline` `radiant/dags/sql/radiant/migrations/RAD-256_germline_cnv_occurrence_add_exomiser.sql`):
    - deploy the radiant-operator image of this release first. The CNV extraction drops, with no error, a column the image does not know: an older image leaves `vcf_id` NULL, and a family-route report matches nothing;
    - add the six columns to `germline__cnv__occurrence` in every `{tenant}_tenant` database (`ALTER TABLE … ADD COLUMN`). Otherwise the positional insert fails and every CNV import breaks;
    - recreate the Iceberg `germline_cnv_occurrence` table with `vcf_id` (only the germline CNV occurrence task of `radiant-init-iceberg-tables`). Each import overwrites it, so nothing is lost;
    - drop the two staging views, then run `radiant-init-starrocks-base-tables` with the `udf_release_version` in use, as in RAD-116: it creates `raw_exomiser_cnv` and the views with the new definition. Otherwise the CNV reports stay invisible;
    - pause `radiant-case-scheduler`, then backfill the CNV annotation tasks already loaded: copy the `exomiser_filepath` from the external view to the proband's `radiant_germline_cnv_annotation` row of `staging_sequencing_experiment`, and set `ingested_at` to `NULL` on every staging row of these tasks. The delta view selects only new or updated rows, so without this step the existing cases get no Exomiser value until their next case change.
-2. etl: trigger `radiant-import` manually. It creates `exomiser_cnv` in each tenant, re-imports the marked parts and loads the reports. When every part has succeeded, unpause `radiant-case-scheduler`. If the scheduler runs while the backfilled cases are pending, it imports them itself and emails the laboratory of every one already past `processing`.
-3. portal backend: task 2, after step 1 in each environment. Before the migration, a query on a new column fails.
-4. portal frontend: task 3.
+3. etl: trigger `radiant-import` manually. It creates `exomiser_cnv` in each tenant, re-imports the marked parts and loads the reports. When every part has succeeded, unpause `radiant-case-scheduler`. If the scheduler runs while the backfilled cases are pending, it imports them itself and emails the laboratory of every one already past `processing`.
+4. portal backend: task 2, after step 2 in each environment. Before the migration, a query on a new column fails.
+5. portal frontend: task 3.
 
 No feature flag.
 
@@ -92,7 +93,7 @@ No feature flag.
 
 | Risk (from the story) | How it is covered |
 |---|---|
-| Clinical rules or interpretation: the Exomiser ACMG classification of a CNV must be attached to the right CNV and must not reach an SNV | • Right CNV: the Exomiser rows and the slivar records come from the same family VCF, and the join uses the record ID within the same task and sequencing. No position matching, no guess across files. The QA check of the TSV key comes before task 1.<br>• No SNV: CNV reports load only from CNV annotation tasks, into their own staging table, read only by the CNV occurrence insert. Tests pin both directions. |
+| Clinical rules or interpretation: the Exomiser ACMG classification of a CNV must be attached to the right CNV and must not reach an SNV | • Right CNV: the join uses the report's `VCF_ID` within the same task and sequencing: the proband's own call ID (`name`) when Exomiser ran on the proband VCF, else the slivar record ID (`vcf_id`) when it ran on the family VCF. No position matching, no guess across files. Key checked on the sandbox CEPH trio (Open questions).<br>• No SNV: CNV reports load only from CNV annotation tasks, into their own staging table, read only by the CNV occurrence insert. Tests pin both directions. |
 
 ## Frozen scope
 
