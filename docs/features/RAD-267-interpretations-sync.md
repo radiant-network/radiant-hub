@@ -5,7 +5,7 @@
 - **Link:** [RAD-267](https://ferlab-crsj.atlassian.net/browse/RAD-267), sub-tasks [RAD-268](https://ferlab-crsj.atlassian.net/browse/RAD-268) (roles and configuration), [RAD-269](https://ferlab-crsj.atlassian.net/browse/RAD-269) (variant lookup endpoint), [RAD-270](https://ferlab-crsj.atlassian.net/browse/RAD-270) (hybrid sync endpoint)
 - **Assigned reviewer:** Jeremy Costanza
 - **Status:** Draft
-- **Branch (all repos):** `feat/rad-269-variants-lookup` (portal), `feat/rad-270-interpretations-sync` (hybrid)
+- **Branch (all repos):** `feat/rad-269-variants-lookup` (portal), `feat/rad-270-interpretations-sync` (hybrid), `feat/rad-268-interpretations-sync-config` (localstack)
 
 ## Chosen approach
 
