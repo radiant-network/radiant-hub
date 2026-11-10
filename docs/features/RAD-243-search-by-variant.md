@@ -42,7 +42,21 @@
   - locus: the chromosome, the separator and the first digit of the position (`1-3`);
   - HGVSg: the chromosome, `:g.` and the first digit of the position (`chr1:g.3`).
 - **Order and limit:** by the length of the matched value, then the value, so the exact match comes first and `rs642002` comes before `rs6420001`. 25 suggestions by default, as for genes.
-- **Response:** each suggestion with its `hgvsg` (the pill value) and the identifier that matched (`matched`). Variants without HGVSg are not suggested. On QA every variant has an HGVSg and no two variants share one, so a pill value designates exactly one variant. An empty list when nothing matches, never an error.
+- **Response:** the `highlight` / `source` shape of the gene, HPO and MONDO autocompletes, with a variant type in `source` and no `highlight`: the backend sends no HTML, and the frontend bolds the typed prefix in `matched` itself. The fields of `source`, all read from the same row of `snv__variant`:
+
+  | Field | Column | Always set | Frontend use |
+  |---|---|---|---|
+  | `hgvsg` | `hgvsg` | yes | Pill value, and the second line of the suggestion, which shows the conversion |
+  | `matched` | the column that matched | yes | First line of the suggestion, with the typed prefix in bold |
+  | `matched_field` | — | yes: `locus`, `hgvsg`, `rsnumber` or `clinvar_id` | Translated prefix of the first line (dbSNP, ClinVar…); the frontend does not detect the format again |
+  | `locus` | `locus` | yes | Tells the alleles of a site apart, and an indel whose HGVSg is shifted |
+  | `rsnumber` | `rsnumber` | no (84 % on QA) | Shown when the variant was found by locus or HGVSg |
+  | `clinvar_id` | `clinvar_name` | no (0.8 % on QA) | Same. Named after its content, the ClinVar variation ID; the column keeps its name |
+  | `symbol` | `symbol` | no (intergenic variants) | Reading context (`HBB`) |
+  | `aa_change` | `aa_change` | no | Reading context (`p.Glu7Val`); searching by `p.` stays out of scope |
+  | `locus_id` | `locus_id` | yes | Unused in V1. Kept for a later "present in this run" marker, so the contract does not change. A string, as in the occurrence types: an int64 does not fit a JavaScript number |
+
+  Left out: `hgvsc`, `hgvsp` and `transcript_id` (they depend on the picked consequence), `chromosome`, `start`, `reference` and `alternate` (in `locus`), frequencies and pathogenicity (they need joins). Unset optional fields are omitted. Variants without HGVSg are not suggested. On QA every variant has an HGVSg and no two variants share one, so a pill value designates exactly one variant. An empty list when nothing matches, never an error.
 - **Scope:** every variant known to the tenant, not only the run on screen. A suggested variant can be absent from the run: once picked, the pill filters the run and the list is empty, which answers « this case does not carry this variant ».
 - **Response time, measured on QA:** on the largest QA tenant (16.3 million variants), a lookup at the minimum length answers in 13 to 22 ms with the data in memory and 15 to 44 ms when it comes from the compute nodes' local disk cache. With the frontend's 300 ms debounce, the suggestions show in under 0.4 s. A read from the object store (true cold) was not measured. Methodology and figures below.
 
@@ -117,9 +131,41 @@ GET /radiant/variants/snv/autocomplete?prefix=RS334&limit=25
 
 200 OK
 [
-  { "hgvsg": "chr11:g.5227002T>A", "matched": "rs334" },
-  { "hgvsg": "chr11:g.5227002T>G", "matched": "rs334" },
-  { "hgvsg": "chr3:g.1201A>C",     "matched": "rs3340" }
+  {
+    "source": {
+      "locus_id": "-4611686018427387904",
+      "hgvsg": "chr11:g.5227002T>A",
+      "locus": "11-5227002-T-A",
+      "rsnumber": "rs334",
+      "clinvar_id": "15333",
+      "matched_field": "rsnumber",
+      "matched": "rs334",
+      "symbol": "HBB",
+      "aa_change": "p.Glu7Val"
+    }
+  },
+  {
+    "source": {
+      "locus_id": "-4611686018427387903",
+      "hgvsg": "chr11:g.5227002T>G",
+      "locus": "11-5227002-T-G",
+      "rsnumber": "rs334",
+      "matched_field": "rsnumber",
+      "matched": "rs334",
+      "symbol": "HBB",
+      "aa_change": "p.Glu7Ala"
+    }
+  },
+  {
+    "source": {
+      "locus_id": "-6917529027641081856",
+      "hgvsg": "chr3:g.1201A>C",
+      "locus": "3-1201-A-C",
+      "rsnumber": "rs3340",
+      "matched_field": "rsnumber",
+      "matched": "rs3340"
+    }
+  }
 ]
 ```
 
@@ -129,7 +175,7 @@ A prefix absent from the tenant, `rs999999999`, returns `200 OK []`.
 
 - **Facet:** the gene search component (multi-select with suggestions, 300 ms debounce, empty state), at the top of the existing `variant` group, in the slot of the gene search. The component becomes configurable: its suggestion source and the label of a suggestion depend on the field.
 - **Suggestion source:** the tenant route, the same for the germline and somatic tabs. The suggestions do not depend on the run on screen.
-- **Suggestion label:** the HGVSg and the identifier that matched (`rs334 → chr11:g.5227002T>A`).
+- **Suggestion label:** the identifier that matched, with the typed prefix in bold, then the HGVSg (`rs334 → chr11:g.5227002T>A`), from `source.matched` and `source.hgvsg`. The bold is built by the frontend from the typed prefix, not parsed from HTML. `symbol` and `aa_change`, when set, complete the second line.
 - **Input:** the picked variants show as HGVSg badges in the input, as genes do (team decision).
 - **Pill:** field `hgvsg`, operator `in`, one HGVSg per value, as the « Variant » column of the tables shows it. `hgvsg` is already a filter of the germline and somatic SNV occurrences, so the list, count and aggregate apply it as is. With the two `rs334` suggestions picked, they send:
 
@@ -179,7 +225,7 @@ AC numbers follow the order of the story's acceptance criteria, once the story i
 
 ### portal (backend)
 
-- **AC1:** StarRocks integration tests on a fixture: a prefix of each identifier type returns its variants, germline and somatic; an rsID returns every allele dbSNP links to it; the shortest match comes first; no more than the limit.
+- **AC1:** StarRocks integration tests on a fixture: a prefix of each identifier type returns its variants, germline and somatic; an rsID returns every allele dbSNP links to it; the shortest match comes first; no more than the limit; each suggestion carries the fields of the response, `locus_id` as a string.
 - **AC2:** unit tests of the format detection and of the normalisation, one per identifier format, including a locus with `chr` or `:` separators and an HGVSg without `chr`; unit tests of the range bounds, with `_` matched as a plain character.
 - **AC3:** a prefix absent from the tenant, below the minimum length of its format, of no known format, or made of regular-expression characters such as `(`, returns an empty list, never an error.
 - **AC4, AC5:** the `hgvsg` filter with several values returns each variant.
