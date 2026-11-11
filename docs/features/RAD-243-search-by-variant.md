@@ -3,8 +3,8 @@
 ## Story
 
 - **Link:** [RAD-243](https://ferlab-crsj.atlassian.net/browse/RAD-243) (epic [RAD-5](https://ferlab-crsj.atlassian.net/browse/RAD-5))
-- **Assigned reviewer:** **[Name]**
-- **Status:** Draft
+- **Assigned reviewer:** Jeremy Costanza
+- **Status:** In review
 - **Branch (all repos):** portal only, one branch per task, named after its Jira sub-task (`feat/rad-xxxx`, no suffix, for the frontend ferlease preview).
 
 ## Chosen approach
@@ -267,7 +267,7 @@ The story checks no risk.
 
 | | |
 |---|---|
-| Reviewer | **[Name]** |
+| Reviewer | Jeremy Costanza |
 | Date | … |
 | Plan review duration | … min |
 | Decision | Approved / Approved with adjustments / Rework needed |
