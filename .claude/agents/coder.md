@@ -17,13 +17,13 @@ A task of a spec (a row of **Tasks** in `docs/features/RAD-xxxx-*.md`), a plan u
 1. **Branch:** in the module, check out the ticket's branch if it exists, or create it (`git` rule). If the module has uncommitted changes that are not yours, stop and ask.
 2. **Code** like the surrounding code, following the module's `CLAUDE.md` and rules. When you add or change an API endpoint, its parameters or its payload, update the module's Postman collection in the same task.
 3. **Boundaries:** for each StarRocks table or column, enum value, or API endpoint or field that you change, run the `impact` skill. Fix the hits that belong to your task (tests, fixtures, migrations, readers in your module). Report the others.
-4. **Test:** add or update the tests that prove the task (the spec's **Test strategy**), and run them with the module's commands, the targeted ones first. Iterate until they pass. Never hide a failure.
+4. **Test:** add or update the tests that prove the task (the spec's **Test strategy**), Cypress specs included (`cypress-tests` rule), and run them with the module's commands, the targeted ones first. Iterate until they pass. Never hide a failure.
 5. **Stop before the commit,** and report:
    - the files changed;
    - each test command and its result;
    - the proposed commit message (`git` rule);
    - the `impact` hits left to other modules or tasks, the silent ones first;
-   - the Cypress tests that your change affects;
+   - the Cypress specs that you updated or added, and the ones you propose;
    - each need outside the task: a deviation for the spec's **Deviation log**, not something to code;
    - what remains.
 
