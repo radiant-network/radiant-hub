@@ -5,5 +5,5 @@
 - **Detect a QA bounce:** a move to `QA` later reverted to an in-progress status means that QA rejected the work. Read the comments posted after it, the `Defect` subtasks and the linked defects, and summarise the QA findings before you propose anything.
 - **Each write needs its own go-ahead:** create, edit, comment, transition, link. Show the full content first (summary, type, components, description, or the comment body) and wait. Silence or an ambiguous answer is not a go-ahead.
 - **Before you create a ticket,** look for one that already covers the need (a RAD ticket, or a spec in `docs/features/`). Complete it rather than open a second one.
-- **Each new ticket has at least one component:** `api` (portal backend), `ui` (portal frontend), `etl`, `mcp`, `nextflow`, `keycloak`. Propose them from the modules impacted and let the user adjust. If the list looks stale, check `allowedValues` of `components` with `getJiraIssueTypeMetaWithFields`.
+- **Each new ticket has at least one component:** `api` (portal backend), `ui` (portal frontend), `cypress` (portal Cypress specs), `etl`, `mcp`, `nextflow`, `keycloak`. Propose them from the modules impacted and let the user adjust. If the list looks stale, check `allowedValues` of `components` with `getJiraIssueTypeMetaWithFields`.
 - Write in English.

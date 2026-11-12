@@ -34,7 +34,7 @@ Use these sections, in this order. Omit a section that has nothing to say, title
 5. **Regression risks:** existing behaviour or consumers that the change can break.
 6. **Code quality:** the hub and module rules, error handling, security (injection, exposed data), dead code, leftover TODOs.
 7. **Docs:** what to update (a module `CLAUDE.md`, the user docs, the spec, the Postman collection of a changed endpoint).
-8. **Manual tests** for QA: `**Scenario** — goal`, steps, expected result. The golden path and the likely edge cases, nothing outside the ticket.
+8. **Tests:** whether the automated tests prove the ACs (the spec's Test strategy). Cypress (`cypress-tests` rule): every spec, test data or POM that the diff impacts, updated by the branch or not, including those reading a field whose computation changes under the same name (`git grep <field|value> <branch> -- cypress/` in `portal/`). Flag the ones the branch does not update, a new behaviour with no spec (propose one) and a portal PR without the `cypress` label. Then the manual tests: `**Scenario** — goal`, steps, expected result. The golden path and the likely edge cases, nothing outside the ticket.
 9. **PR feedback:** per human comment, a summary, then addressed, partly addressed or not addressed on the branch, and what remains. Bot comments only when still relevant. End with a table `Reviewer | Verdict | Addressed | Pending`.
 10. **QA feedback,** only after a QA bounce: per defect, still relevant (yes, no, debatable, with a reason), addressed, partly addressed or not addressed, and what remains. End with a table `Defect | Relevant | Status | Remaining`.
 

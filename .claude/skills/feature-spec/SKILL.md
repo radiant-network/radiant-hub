@@ -66,7 +66,7 @@ Do not write code. Do not create branches. Do not commit unless the user asks.
   - **Boundaries:** a change to a StarRocks table or column, an enum value, or an API endpoint or field goes in the module subsection of **Chosen approach**, with its readers and its migration or compatibility note.
   - **Pipeline job input:** when the story adds a job, give its run config in the module subsection of **Chosen approach**: each param with its type, whether it is required, its use, and one example. Follow the param names of the existing jobs.
   - **Merge and rollout order:** a short numbered list, as in the template. For each step: what, and what breaks if it is skipped. Then one line on backfill and feature flags.
-  - **Test strategy:** module subsections (see section 4). Tag each bullet with the AC it proves. Add a `### QA (manual)` subsection for the checks by hand.
+  - **Test strategy:** module subsections (see section 4). Tag each bullet with the AC it proves. In the portal subsections, say which ACs Cypress proves, with new or updated specs (`cypress-tests` rule). Add a `### QA (manual)` subsection for the checks by hand.
   - **Risks and coverage:** one row per business risk of the story. If the story checks none, say so in one line.
   - **Frozen scope:** module subsections. Use an `### all` subsection for cross-module items.
   - **Open questions:** module subsections, each question with its proposal when you have one. Use a `### story / product` subsection for questions that no module owns.
