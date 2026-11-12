@@ -25,9 +25,9 @@ Copied from the story on 2026-11-12.
 
 ### portal (backend)
 
-- **Source:** the existing My Network counts of the variant panel. Germline counts group `interpretation_germline.classification` by locus and map the LOINC code to a label. Somatic counts group `interpretation_somatic.oncogenicity` and return the stored value as is. Both are scoped to the active tenant, so "My Network" is the tenant, as in the panel. The counts include the current case's own interpretation.
-- **Read path:** after the list query, the list handler reads the counts of the page's loci in one grouped PostgreSQL query per list call, with the same rules as the panel query. The StarRocks list query is unchanged.
-- **Null or unknown classification:** the list skips it and logs a warning, so one bad row never fails the page. A variant whose interpretations carry no known classification shows a dash.
+- **Source:** the existing My Network counts of the variant panel. Germline counts group `interpretation_germline.classification` by locus and map the LOINC code to a label. Somatic counts group `interpretation_somatic.oncogenicity` and map every stored form (the LOINC code, or the older key such as `oncogenic` in any case, with spaces read as `_`) to that key, so one classification gives one badge. Both are scoped to the active tenant, so "My Network" is the tenant, as in the panel. The counts include the current case's own interpretation.
+- **Read path:** after the list query, the list handler reads the counts of the page's loci in one grouped PostgreSQL query per list call, scoped like the panel query. The StarRocks list query is unchanged. If the counts query fails, the list is still returned, without counts, and the error is logged.
+- **Empty or unknown classification:** the list skips it, so one bad row never fails the page. An unknown value logs a warning; an empty one (a form saved without classification) does not. A variant whose interpretations carry no known classification shows a dash.
 - **API field:** `interpretation_classification_counts` (object, classification → count, omitted when the variant has none) on each item of `POST /{tenant}/occurrences/germline/snv/{case_id}/{seq_id}/{task_id}/list` and its somatic twin. Same name and shape as on the expanded occurrence and the variant overview, so the frontend reuses its type. Not filterable, not sortable.
 - **Contract:** additive. Readers: the portal frontend (TS client) and the MCP's occurrence tools (Python client). The Python client is regenerated. The MCP pins an older client, which reads only the fields it knows, so it ignores the new field until its pin is bumped.
 
@@ -103,7 +103,7 @@ The story checks no business risk.
 
 ### portal (frontend)
 
-- The somatic variant panel keeps its badges: it shows an oncogenicity code such as `LA6668-3` as `P`, not `O`. The column shows the somatic labels, so it deviates from the panel there (AC5). A separate ticket will fix the panel.
+- The somatic variant panel keeps its badges: it shows an oncogenicity code such as `LA6668-3` as `P`, not `O`, and a stored `Likely Oncogenic` as a "no data" badge, not `LO`. The column shows the somatic labels in both cases, so it deviates from the panel there (AC5). A separate ticket will fix the panel.
 
 ## Open questions
 
