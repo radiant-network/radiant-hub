@@ -32,7 +32,7 @@
 - **Autocomplete** (`CasesRepository.SearchById`, `GET /{tenant}/cases/autocomplete`):
   - new sub-query: `"run_name" as type, run_name as value` from `sequencing_experiment` joined to `case_has_sequencing_experiment` (a run with no case is not suggested), `LOWER(run_name) LIKE lower(prefix) || '%'`, empty values left out. The `UNION` already removes duplicates, so a run shared by many cases is suggested once;
   - the `sequencing_experiment_id` sub-query is removed;
-  - `CaseSequencingExperimentIdField` stays filterable: the MCP and saved queries use it.
+  - `CaseSequencingExperimentIdField` stays filterable: the MCP lists it among its filters.
 
   ```sql
   SELECT 'run_name' AS type, s.run_name AS value
@@ -48,21 +48,27 @@
   ```
 
   ```sql
+  -- rows: one per (case, run) of every sequencing of the case, with the run_date and seq_id
+  -- that caseWithArray orders the array by, as probandSequencings gives them for the Run column
   LEFT JOIN (
     SELECT c.id AS case_id,
-           array_filter(x -> x IS NOT NULL AND x <> '', array_agg(runs.run_name ...)) AS run_names
+           array_filter(x -> x IS NOT NULL AND x <> '',
+                        array_agg(runs.run_name ORDER BY runs.run_date DESC NULLS LAST, runs.seq_id DESC)) AS run_names
     FROM <tenant>_tenant.cases c
-    LEFT JOIN (SELECT DISTINCT chseq.case_id, s.run_name
-               FROM case_has_sequencing_experiment chseq
-               JOIN sequencing_experiment s ON s.id = chseq.sequencing_experiment_id) runs
+    LEFT JOIN (SELECT chseq.case_id, s.run_name, MAX(s.run_date) AS run_date, MAX(s.id) AS seq_id
+               FROM <tenant>_tenant.case_has_sequencing_experiment chseq
+               JOIN <tenant>_tenant.sequencing_experiment s ON s.id = chseq.sequencing_experiment_id
+               GROUP BY chseq.case_id, s.run_name) runs
       ON runs.case_id = c.id
     GROUP BY c.id
   ) case_member_run ON case_member_run.case_id = c.id
   WHERE array_contains(case_member_run.run_names, ?)
   ```
 
+  One value gives `array_contains`, several give `arrays_overlap` (`types/filter.go`).
+
 - **Access:** unchanged. The tables are read through the tenant views, as the Sample filter and the Run column already do.
-- **Contract:** the response shapes do not change. A new value of the autocomplete `type` (`run_name`) replaces `sequencing_experiment_id`, and a new filter field is accepted. Swagger description updated, TS and Python clients regenerated.
+- **Contract:** the response shapes do not change. A new value of the autocomplete `type` (`run_name`) replaces `sequencing_experiment_id`, and a new filter field is accepted. The OpenAPI spec lists neither the autocomplete types nor the filter fields, so it does not change: no client regeneration, and no bump of the MCP's pinned Python client.
 
 ### portal (frontend)
 
@@ -82,13 +88,13 @@
 
 - **Proband runs only** (reuse `run_names` of the Run column as the filter): not kept, the PO wants every member (a run with only the father's sample must find the trio).
 - **Row join with `DISTINCT`** (as the `case_group` filter): joins `(case_id, run_name)` rows and makes the list and count `DISTINCT`. Not kept: it changes the shape of the whole query for one filter, while the array join is already the pattern of the Sample filter.
-- **Keep `sequencing_experiment_id` in the autocomplete:** not kept, the story replaces it; nobody outside Radiant knows the internal sequencing ID.
+- **Keep `sequencing_experiment_id` in the autocomplete:** not kept, the story replaces it: the labs search by their run ID, not by Radiant's internal sequencing ID.
 
 ## Modules impacted
 
 | Module | Area | Kind of change |
 |---|---|---|
-| portal (backend) | case types (`run_name` filter field and its table), case search joins, case autocomplete, swagger, generated TS and Python clients | new / modified |
+| portal (backend) | case types (`run_name` filter field and its table), case search joins, case autocomplete, Postman | new / modified |
 | portal (frontend) | case search placeholder, suggestion icon map, EN/FR labels | modified |
 | portal (cypress) | API specs and fixture of the case autocomplete and search | modified |
 | mcp | `search_cases` autocomplete routing (`tools/cases.py`), case filter field list (`api_fields.py`), docstring, `docs/tools.md` | modified |
@@ -97,7 +103,7 @@
 
 | # | Task | Component | Content | Depends on | Shippable alone? |
 |---|---|---|---|---|---|
-| 1 | Run filter and autocomplete | portal (backend) | `run_name` filter field and `case_member_run` join, run sub-query in `SearchById`, sequencing sub-query removed, tests, swagger and clients, Cypress API specs (`Autocomplete` and `Search`: `SequencingExperiment` → `Run`), Postman | — | yes: the current frontend shows run suggestions with the default icon and the « Run Name » label |
+| 1 | Run filter and autocomplete | portal (backend) | `run_name` filter field and `case_member_run` join, run sub-query in `SearchById`, sequencing sub-query removed, tests, Cypress API specs (`Autocomplete` and `Search`: `SequencingExperiment` → `Run`), Postman | — | yes: the current frontend shows run suggestions with the default icon and the « Run Name » label |
 | 2 | Run in the case search bar | portal (frontend) | Placeholder, icon, EN/FR labels, Cypress mock fixture `AutocompleteCase.json` | Task 1 | yes, once task 1 is deployed |
 | 3 | Run in `search_cases` | mcp | `run_name` routing, `sequencing_experiment_id` routing removed, `run_name` in `CASE_FILTER_FIELDS`, docstring and `docs/tools.md`, unit tests | Task 1 merged | yes, once task 1 is deployed; its CI needs task 1 on portal `main` |
 
@@ -106,7 +112,7 @@ No UX task: the change reuses the existing search bar; only the run icon is need
 ## Merge and rollout order
 
 1. portal backend: task 1.
-2. portal frontend: task 2, after step 1 in the same environment. Before it, the dropdown shows no sequencing suggestion and no run suggestion of the right icon.
+2. portal frontend: task 2, after step 1 in the same environment. Between the two, the dropdown already shows run suggestions, with the default icon and the « Run Name » / « Nom du lot » label, and the placeholder still says sequencing.
 3. mcp: task 3, merged right after task 1 is merged on portal `main`: its CI compares the MCP field list with portal `main`, so it fails before task 1 is merged, and every MCP PR fails from the merge of task 1 until task 3 is in. Until task 3 is deployed, a free-text MCP query on a run returns nothing and a query on a sequencing ID no longer matches.
 
 No migration, no backfill, no feature flag, no ETL change: `run_name` already exists.
@@ -142,7 +148,7 @@ No migration, no backfill, no feature flag, no ETL change: `run_name` already ex
 ### QA (manual)
 
 - **AC1 to AC3:** on the ferlease, type the start of a run of a trio: the dropdown shows « Run » / « Lot » with the run icon; picking it lists the case. Then a run that holds only a parent's sample: the case is listed, and its Run column shows the proband's run. Screenshots in the PR.
-- **Response time:** the time of `POST /cases/search` with a `run_name` filter on the largest QA tenant, recorded in the task 1 PR (the run join is an aggregate over every case of the tenant, read through the federation).
+- **Response time:** on the largest QA tenant, recorded in the task 1 PR: `POST /cases/search` with a `run_name` filter (the run join is an aggregate over every case of the tenant, read through the federation), and `GET /cases/autocomplete` with a run prefix (one more sub-query on every keystroke, a `LIKE` on a column Postgres does not index).
 
 ## Risks and coverage
 
@@ -150,6 +156,7 @@ No migration, no backfill, no feature flag, no ETL change: `run_name` already ex
 |---|---|
 | A case found through a relative's run looks like a wrong result, since its Run column shows the proband's run | PO accepted it (2026-11-13); QA manual check |
 | Cost of the run aggregate over every case, read from Postgres through the JDBC federation, before the count | Joined only when the run filter is used; measurement in the task 1 PR, a gap goes to the deviation log |
+| Cost of the run sub-query added to the autocomplete, run on every keystroke | Measurement in the task 1 PR |
 | Run names are not unique across labs: a run name reused by two labs of a tenant finds both labs' cases | Accepted: the user sees the cases and their lab in the list. Tenant isolation is unchanged |
 | The MCP sends the new `run_name` match to the `mrn` filter and finds nothing | Task 3 |
 | The MCP CI breaks on every PR once task 1 is merged | Task 3 merged right after task 1 (merge order) |
