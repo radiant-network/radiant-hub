@@ -8,6 +8,7 @@
 
 # Local-only
 /tmp/
+.env
 .claude/settings.local.json
 
 # Genetics sheets, local for now
