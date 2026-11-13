@@ -13,7 +13,7 @@ Report in the user's language, headings included.
 | Run | Workflow (`portal/.github/workflows/`) | Slack links |
 |---|---|---|
 | Nightly | `cypress-nightly.yml`, weekdays 07:00 UTC, against QA (main deployed) | screenshots zip, HTML report, `combined-results.xml` (every test) |
-| Ferlease | `ferlease-pr.yml`, job `cypress`, against the PR's preview | screenshots zip of the new failures, one HTML report per shard, no XML |
+| Ferlease | `ferlease-pr.yml`, job `cypress`, against the PR's preview | screenshots zip of the new failures, one HTML report per shard, `combined-results.xml` (every failure, tagged ones included) |
 
 Ask when neither the user nor the report says which run it is.
 
