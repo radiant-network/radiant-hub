@@ -34,11 +34,12 @@
 - **Format detection,** on the trimmed input, case-insensitive:
   - `rs` then digits → rsID, on `rsnumber`;
   - digits only → ClinVar ID, on `clinvar_name` (all ClinVar IDs are numeric on QA);
-  - a chromosome, `:` then `g.` → HGVSg, on `hgvsg`;
+  - a chromosome, `:`, `g.`, a position or a range (`100` or `100_102`) then a change: `A>T`, `del`, `ins`, `dup`, `inv` or `delins`, with bases where HGVS allows them → HGVSg, on `hgvsg`. A text that starts like an HGVSg but has no valid change (`7:g.hello`) is `unrecognized_format`. Every HGVSg of the sandbox (625,459) has this form;
   - a chromosome, `-` or `:`, a position, a reference and an alternate → locus, on `locus`;
-  - anything else, or an input longer than 2,000 characters (the size of `hgvsg`) → `unrecognized_format`, no query.
+  - anything else, an empty or missing input, or an input longer than 2,000 characters (the size of `hgvsg`) → `unrecognized_format`, no query. Only a malformed JSON body returns `400`.
 - **Normalisation:**
   - rsID: lower-case prefix (`RS334` → `rs334`);
+  - chromosome: `1` to `22`, `X`, `Y`, `M`; `MT` is accepted and turned into `M`, the form the tables store;
   - locus: optional `chr` removed, `:` separators turned into `-` (`8:43159045:G:A` → `8-43159045-G-A`), upper-case;
   - HGVSg: `chr` added when missing (`7:g.140753336A>T` → `chr7:g.140753336A>T`); `chr`, `g.` and the keywords `del`, `ins`, `dup`, `inv` lower-case; chromosome name upper-case (`X`, `Y`, `M`: `chrx:g.…` → `chrX:g.…`); bases upper-case (`CHR1:G.30004963_30004966DUP` → `chr1:g.30004963_30004966dup`);
   - ClinVar: the variation ID only, digits (PO decision).
