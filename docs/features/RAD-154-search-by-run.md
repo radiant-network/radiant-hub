@@ -3,7 +3,7 @@
 ## Story
 
 - **Link:** [RAD-154](https://ferlab-crsj.atlassian.net/browse/RAD-154)
-- **Assigned reviewer:** **[Name]**
+- **Assigned reviewer:** Jeremy Costanza
 - **Status:** Draft
 - **Branch (all repos):** one branch per task, named after its Jira sub-task (`feat/rad-xxxx`).
 - **Acceptance criteria (AC),** as the story numbers them; the test strategy follows this numbering:
@@ -187,7 +187,7 @@ No migration, no backfill, no feature flag, no ETL change: `run_name` already ex
 
 | | |
 |---|---|
-| Reviewer | **[Name]** |
+| Reviewer | Jeremy Costanza |
 | Date | … |
 | Plan review duration | … min |
 | Decision | Approved / Approved with adjustments / Rework needed |
