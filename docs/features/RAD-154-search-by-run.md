@@ -18,7 +18,7 @@
 
 ## Chosen approach
 
-**Summary:** a new `run_name` filter on the case search, built from the runs of every sequencing linked to the case, and the case autocomplete suggests run names instead of sequencing IDs. The frontend swaps the sequencing icon, label and placeholder for run ones. The MCP routes the new suggestion type to the new filter.
+**Summary:** a new `run_name` filter on the case search, built from the runs of every sequencing linked to the case, and the case autocomplete suggests run names instead of sequencing IDs. The frontend swaps the sequencing icon, label and placeholder for run ones. The MCP's `search_cases` routes the new suggestion type to the new filter and lists the new field.
 
 ### portal (backend)
 
@@ -72,8 +72,11 @@
 
 ### mcp
 
-- `search_cases` resolves a free-text query through the case autocomplete and sends every match type it does not know to the `mrn` filter. A `run_name` match would therefore look for an MRN and find nothing. The same already happens to `proband_submitter_sample_ids` since RAD-101.
-- Change: route `run_name` and `proband_submitter_sample_ids` to their own filters, add `run_name` and `proband_submitter_sample_ids` to `CASE_SEARCH_FILTER_FIELDS`, and update the docstrings: the free-text query no longer matches internal sequencing IDs, and it now matches run names and sample IDs. The explicit `sequencing_experiment_id` filter still works.
+- **Today:** `search_cases` (`radiant_mcp/tools/cases.py`) resolves a free-text query through the case autocomplete, then runs one search per match type: `case_id`, `patient_id` and `sequencing_experiment_id` (`_AUTOCOMPLETE_INT_FIELDS`), `proband_submitter_sample_ids` (`_AUTOCOMPLETE_TEXT_FIELDS`). Any other type is taken for a submitter patient ID and sent to the `mrn` filter, so a `run_name` match would look for an MRN and find nothing.
+- **Routing:** `run_name` added to `_AUTOCOMPLETE_TEXT_FIELDS`; `sequencing_experiment_id` removed from `_AUTOCOMPLETE_INT_FIELDS`, the autocomplete no longer returns it.
+- **Field list:** `run_name` added to `CASE_FILTER_FIELDS` (`radiant_mcp/api_fields.py`). `sequencing_experiment_id` stays: it is still a filter.
+- **Descriptions:** the `search_cases` docstring (the text before `Args:` is what the agent sees) and `docs/tools.md` list the run among the identifiers and drop the sequencing ID.
+- **Coupling:** `tests/unit/test_api_fields.py` compares `CASE_FILTER_FIELDS` with `CasesFields` of portal `main`, which the MCP's CI checks out. The MCP CI fails from the merge of task 1 until task 3 is merged, and task 3's CI fails before task 1 is merged (see merge order).
 
 ### Alternatives considered
 
@@ -88,7 +91,7 @@
 | portal (backend) | case types (`run_name` filter field and its table), case search joins, case autocomplete, swagger, generated TS and Python clients | new / modified |
 | portal (frontend) | case search placeholder, suggestion icon map, EN/FR labels | modified |
 | portal (cypress) | API specs and fixture of the case autocomplete and search | modified |
-| mcp | `search_cases` autocomplete routing, filter field list, docstrings | modified |
+| mcp | `search_cases` autocomplete routing (`tools/cases.py`), case filter field list (`api_fields.py`), docstring, `docs/tools.md` | modified |
 
 ## Tasks
 
@@ -96,7 +99,7 @@
 |---|---|---|---|---|---|
 | 1 | Run filter and autocomplete | portal (backend) | `run_name` filter field and `case_member_run` join, run sub-query in `SearchById`, sequencing sub-query removed, tests, swagger and clients, Cypress API specs (`Autocomplete` and `Search`: `SequencingExperiment` → `Run`), Postman | — | yes: the current frontend shows run suggestions with the default icon and the « Run Name » label |
 | 2 | Run in the case search bar | portal (frontend) | Placeholder, icon, EN/FR labels, Cypress mock fixture `AutocompleteCase.json` | Task 1 | yes, once task 1 is deployed |
-| 3 | Run and sample in `search_cases` | mcp | Routing of `run_name` and `proband_submitter_sample_ids`, field list, docstrings, tests | Task 1 | yes, once task 1 is deployed |
+| 3 | Run in `search_cases` | mcp | `run_name` routing, `sequencing_experiment_id` routing removed, `run_name` in `CASE_FILTER_FIELDS`, docstring and `docs/tools.md`, unit tests | Task 1 merged | yes, once task 1 is deployed; its CI needs task 1 on portal `main` |
 
 No UX task: the change reuses the existing search bar; only the run icon is needed (open question). No Labels task: the labels come from the PO's answers and ship with task 2.
 
@@ -104,7 +107,7 @@ No UX task: the change reuses the existing search bar; only the run icon is need
 
 1. portal backend: task 1.
 2. portal frontend: task 2, after step 1 in the same environment. Before it, the dropdown shows no sequencing suggestion and no run suggestion of the right icon.
-3. mcp: task 3, after step 1. Before it, a free-text MCP query on a run returns nothing.
+3. mcp: task 3, merged right after task 1 is merged on portal `main`: its CI compares the MCP field list with portal `main`, so it fails before task 1 is merged, and every MCP PR fails from the merge of task 1 until task 3 is in. Until task 3 is deployed, a free-text MCP query on a run returns nothing and a query on a sequencing ID no longer matches.
 
 No migration, no backfill, no feature flag, no ETL change: `run_name` already exists.
 
@@ -133,7 +136,8 @@ No migration, no backfill, no feature flag, no ETL change: `run_name` already ex
 
 ### mcp
 
-- Unit tests of the routing: a `run_name` match goes to the `run_name` filter, a sample match to the sample filter, an unknown type still to `mrn`.
+- Unit tests of `search_cases` with the fake portal API (`FakeApi`): a `run_name` match is searched with the `run_name` filter, an unknown type still with `mrn`.
+- `test_api_fields.py` passes against portal `main` with task 1 merged.
 
 ### QA (manual)
 
@@ -148,6 +152,7 @@ No migration, no backfill, no feature flag, no ETL change: `run_name` already ex
 | Cost of the run aggregate over every case, read from Postgres through the JDBC federation, before the count | Joined only when the run filter is used; measurement in the task 1 PR, a gap goes to the deviation log |
 | Run names are not unique across labs: a run name reused by two labs of a tenant finds both labs' cases | Accepted: the user sees the cases and their lab in the list. Tenant isolation is unchanged |
 | The MCP sends the new `run_name` match to the `mrn` filter and finds nothing | Task 3 |
+| The MCP CI breaks on every PR once task 1 is merged | Task 3 merged right after task 1 (merge order) |
 | `common.table.filters.search.run_name` is shared with the Files page autocomplete: its label changes there too | Open question |
 
 ## Frozen scope
