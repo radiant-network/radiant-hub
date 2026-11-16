@@ -13,7 +13,7 @@
 
 ### etl
 
-- **New table:** `snv__variant_identifier` in each `<tenant>_tenant` database. One row per identifier of a variant: its `locus`, its `hgvsg`, and its `rsnumber` and `clinvar_name` when set, with the `locus_id`. About 2 to 4 rows per variant. Keyed, sorted and distributed by identifier, so a lookup reads one bucket and stays fast whatever the size (16.3 million variants on QA today, over a billion expected in production within 2 to 3 years).
+- **New table:** `snv__variant_identifier` in each `<tenant>_tenant` database. One row per identifier of a variant: its `locus`, its `hgvsg`, and its `rsnumber` and `clinvar_name` when set, with the `locus_id`. About 2 to 4 rows per variant. Keyed, sorted and distributed by identifier, so a lookup reads one bucket and stays fast whatever the size (16.3 million variants on QA today, more than 40 millions expected in production).
 - **Values:** copied as stored in `snv__variant`. They already have the form that the search normalises its input to (locus without `chr`, VEP HGVSg, lower-case `rs`, numeric ClinVar ID), so the ETL normalises nothing.
 - **Import:** a new step right after the variant part of `snv__variant_partitioned` is written. It adds the identifiers of the variants of that part only (upsert on the key), so the cost follows the batch, not the table. Rerunning it changes nothing.
 - **Re-annotation:** `reannotate_open_data` rebuilds the whole table of each tenant after it rewrites `snv__variant`, since a new dbSNP or ClinVar release can change or remove rsIDs and ClinVar IDs.
@@ -100,7 +100,7 @@ No feature flag. The backfill is the forced re-annotation of step 2.
 
 ### etl
 
-- Full rewrite of `snv__variant` at each import: it will be the import bottleneck at a billion rows, separate ticket.
+- Full rewrite of `snv__variant` at each import: its cost grows with the table (more than 40 million variants expected in production), separate ticket.
 - Secondary rsIDs of dbSNP and ClinVar accessions (`VCV…`) in the lookup.
 
 ### portal (backend)
