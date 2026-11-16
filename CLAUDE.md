@@ -58,4 +58,4 @@ For any feature that touches more than one module, use the `cross-module-feature
 
 - Secrets, tokens and patient data: see the `confidentiality` rule.
 - `bioinfo/*` repos belong to the bioinfo team. Read them freely to understand an output format, but do not push or open PRs there without an explicit request.
-- Infra repos describe real QA/prod environments. Read them freely, but never apply, plan against or push anything there without an explicit request.
+- Infra repos describe real QA/prod environments. Read them freely, but never apply, plan against or push anything there without an explicit request. In `infra/qlin-qa`, a merge to `main` is an apply: scheduled jobs apply each Terraform stack from `main` within 15 minutes.
