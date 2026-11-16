@@ -18,8 +18,8 @@ Report in the user's language, headings included.
 Ask when neither the user nor the report says which run it is.
 
 - `retries.runMode: 2`: a definitive failure has an « (attempt 3) » screenshot. Slack's « new fails » are the failures whose title has no `RAD-`, `SJRA-` or `CLIN-` tag.
-- A green GitHub job proves nothing: the result is the aggregator's Slack post.
-- Ferlease: the specs come from the PR merged with main, the app from the branch head, so they only match once the branch is rebased (otherwise Slack posts « Launch Attempt Failed »). The shards wait up to 30 min for `/version.txt` to serve the pushed SHA. When it never does, no test runs and Slack posts « Failed 💥 » with no report link: check that URL on the preview (a branch too long for the `git` rule is never deployed). To rerun without a push, the user removes and re-adds the `cypress` label.
+- A green GitHub job proves nothing: the result is the aggregator's Slack post. A Ferlease's files are deleted when its PR closes, a nightly's after 7 days: past that, only the Slack message remains.
+- Ferlease: the specs come from the PR merged with main, the app from the branch head, so they only match once the branch is rebased (otherwise Slack posts « Launch Attempt Failed »). The shards wait up to 30 min for `/version.txt` to serve the pushed SHA. When it never does, no test runs and Slack posts « Failed 💥 » with no report link: check that URL on the preview. A branch over the `git` rule's limit stops before, with « Release Failed ». To rerun without a push, the user removes and re-adds the `cypress` label.
 - Each CI run logs in with one of `cypress@` to `cypress4@email.me`, named in its Slack messages (`Test account:`). A failure seen with one account only points to its grants or its saved filters: rerun with `CYPRESS_USER_USERNAME=<account>` in the `env` of step 6. A run stopped by a push, a label removal or a new nightly posts « Cypress run stopped » and no results.
 
 ## 2. Collect the failures without opening a report
