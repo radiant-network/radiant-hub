@@ -3,7 +3,7 @@
 ## Story
 
 - **Link:** [RAD-313](https://ferlab-crsj.atlassian.net/browse/RAD-313), follow-up of [RAD-243](https://ferlab-crsj.atlassian.net/browse/RAD-243) and [RAD-284](https://ferlab-crsj.atlassian.net/browse/RAD-284)
-- **Assigned reviewer:** to be assigned
+- **Assigned reviewer:** Jeremy Costanza
 - **Status:** Draft
 - **Branch (all repos):** `feat/rad-313-variant-elsewhere-in-project`
 
@@ -13,7 +13,7 @@
 
 ### etl
 
-- **New table:** `snv__variant_identifier` in each `<tenant>_tenant` database. One row per identifier of a variant: its `locus`, its `hgvsg`, and its `rsnumber` and `clinvar_name` when set, with the `locus_id`. About 2 to 4 rows per variant. Keyed, sorted and distributed by identifier, so a lookup reads one bucket and stays fast whatever the size (16.3 million variants on QA today, more than 40 millions expected in production).
+- **New table:** `snv__variant_identifier` in each `<tenant>_tenant` database. One row per identifier of a variant: its `locus`, its `hgvsg`, and its `rsnumber` and `clinvar_name` when set, with the `locus_id`. About 2 to 4 rows per variant. Keyed, sorted and distributed by identifier, so a lookup reads one bucket and stays fast whatever the size (16.3 million variants on QA today, more than 40 million expected in production).
 - **Values:** copied as stored in `snv__variant`. They already have the form that the search normalises its input to (locus without `chr`, VEP HGVSg, lower-case `rs`, numeric ClinVar ID), so the ETL normalises nothing.
 - **Import:** a new step right after the variant part of `snv__variant_partitioned` is written. It adds the identifiers of the variants of that part only (upsert on the key), so the cost follows the batch, not the table. Rerunning it changes nothing.
 - **Re-annotation:** `reannotate_open_data` rebuilds the whole table of each tenant after it rewrites `snv__variant`, since a new dbSNP or ClinVar release can change or remove rsIDs and ClinVar IDs.
@@ -53,16 +53,17 @@
 |---|---|---|---|---|---|
 | 1 | Variant identifier lookup table | etl | Table, migration creating it, import step, re-annotation rebuild, integrity check | — | yes (nothing reads it yet) |
 | 2 | Look the variant up in the project | portal (backend) | Project lookup in the search, `in_project` and `project_variants` in the response, test fixture, swagger and clients, Postman | Task 1 (table in the test schema) | yes once task 1 is migrated (additive response) |
-| 3 | Message and link to the variant page | portal (frontend) | Three-way message, link per variant to the Cases tab, EN/FR labels validated by the clinical team | Task 2 | yes once task 2 is deployed |
+| 3 | Message and link to the variant page | portal (frontend) | Three-way message, link per variant to the Cases tab, EN/FR labels validated by the clinical team | Task 2, RAD-285 (the line under the search input) | yes once task 2 and RAD-285 are deployed |
 
 No UX task: the message reuses the line under the search input that RAD-285 adds, with a plain link.
+
 ## Merge and rollout order
 
 1. etl: task 1 merged, migration run on every tenant database (QA, then prod), before the DAGs are deployed. Without the table, the new import step fails and every import breaks.
 2. etl: one `reannotate_open_data` run with `force_reannotation` fills the table for every tenant. Until it runs, the table is empty and every search answers "unknown to the project".
 3. etl: the next imports keep the table current by adding their new variants.
 4. portal backend: task 2, only after steps 1 and 2 in the same environment. Deployed before step 2, it reports existing variants as unknown.
-5. portal frontend: task 3, after the backend.
+5. portal frontend: task 3, after the backend and RAD-285.
 
 No feature flag. The backfill is the forced re-annotation of step 2.
 
@@ -75,7 +76,7 @@ No feature flag. The backfill is the forced re-annotation of step 2.
 
 ### portal (backend)
 
-- **AC1:** existing run-search tests unchanged; response time measured on QA with a real run, recorded in the PR.
+- **AC1:** existing run-search tests unchanged. The response time of the project lookup is measured on QA with a real run and recorded in the PR.
 - **AC2, AC4, AC5:** repository and API integration tests on a fixture with a variant in the tenant but not in the run, and an identifier unknown to the tenant.
 - **AC6:** repository test with a lookup row whose identifier no longer matches `snv__variant`: no match.
 
@@ -87,7 +88,7 @@ No feature flag. The backfill is the forced re-annotation of step 2.
 ### QA (manual)
 
 - **AC3:** from a germline run, the Cases tab lists the expected cases on QA data; from a somatic run, the message shows without a link.
-- **AC1:** response time on a large QA run.
+- **AC1:** a variant of the run is still added to the pill, on a large QA run.
 
 ## Risks and coverage
 
@@ -135,7 +136,7 @@ No feature flag. The backfill is the forced re-annotation of step 2.
 
 | | |
 |---|---|
-| Reviewer | **to be assigned** |
+| Reviewer | **Jeremy Costanza** |
 | Date | … |
 | Plan review duration | … min |
 | Decision | Approved / Approved with adjustments / Rework needed |
