@@ -54,8 +54,6 @@ Call `createJiraIssue` with:
 
 Keep the reviewer in the description. Don't set them as assignee unless the user asks.
 
-Give the user the ticket key and link (`https://ferlab-crsj.atlassian.net/browse/RAD-xxxx`).
-
 ## 5. Next step
 
 - **Small:** nothing else.
