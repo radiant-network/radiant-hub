@@ -13,13 +13,14 @@ Report in the user's language, headings included.
 | Run | Workflow (`portal/.github/workflows/`) | Slack links |
 |---|---|---|
 | Nightly | `cypress-nightly.yml`, weekdays 07:00 UTC, against QA (main deployed) | screenshots zip, HTML report, `combined-results.xml` (every test) |
-| Ferlease | `ferlease-pr.yml`, job `cypress`, against the PR's preview | screenshots zip of the new failures, one HTML report per shard, no XML |
+| Ferlease | `ferlease-pr.yml`, job `cypress`, against the PR's preview | screenshots zip of the new failures, one HTML report per shard, `combined-results.xml` (every failure, tagged ones included) |
 
 Ask when neither the user nor the report says which run it is.
 
 - `retries.runMode: 2`: a definitive failure has an « (attempt 3) » screenshot. Slack's « new fails » are the failures whose title has no `RAD-`, `SJRA-` or `CLIN-` tag.
 - A green GitHub job proves nothing: the result is the aggregator's Slack post.
-- Ferlease: the specs come from the PR merged with main, the app from the branch head, so they only match once the branch is rebased (otherwise Slack posts « Launch Attempt Failed »). The shards wait until `/version.txt` serves the pushed SHA. To rerun without a push, remove and re-add the `cypress` label.
+- Ferlease: the specs come from the PR merged with main, the app from the branch head, so they only match once the branch is rebased (otherwise Slack posts « Launch Attempt Failed »). The shards wait up to 30 min for `/version.txt` to serve the pushed SHA. When it never does, no test runs and Slack posts « Failed 💥 » with no report link: check that URL on the preview (a branch too long for the `git` rule is never deployed). To rerun without a push, the user removes and re-adds the `cypress` label.
+- Each CI run logs in with one of `cypress@` to `cypress4@email.me`, named in its Slack messages (`Test account:`). A failure seen with one account only points to its grants or its saved filters: rerun with `CYPRESS_USER_USERNAME=<account>` in the `env` of step 6. A run stopped by a push, a label removal or a new nightly posts « Cypress run stopped » and no results.
 
 ## 2. Collect the failures without opening a report
 
@@ -41,7 +42,7 @@ From inside `portal/`:
 | Nightly | last `origin/main` commit before the run start: `git rev-list -1 --before=<start> origin/main` | same commit |
 | Ferlease | PR head: `gh pr view <n> --json headRefName,headRefOid` | the head merged with main |
 
-Read through `git show <sha>:<path>`, never the checkout (it may sit on another branch), and check that the stack-trace line matches. Then find what changed since the last green run (the previous weekday nightly, or `git diff origin/main...<head>` for a PR), limited to the spec, its POM, the component and the API that it touches, and whether that PR ran Cypress (`cypress` label). Also check the open PRs that may already fix it (`gh pr list --search`) and recent reference-data or ETL changes.
+Read through `git show <sha>:<path>`, never the checkout (it may sit on another branch), and check that the stack-trace line matches. Then find what changed since the last green run (the previous weekday nightly, or `git diff origin/main...<head>` for a PR), limited to the spec, its POM, the component and the API that it touches, and whether that PR ran Cypress (`cypress` label). Its green run does not clear it: a flaky spec can pass there. Also check the open PRs that may already fix it (`gh pr list --search`) and recent reference-data or ETL changes.
 
 ## 4. Group by root cause
 
@@ -100,9 +101,9 @@ On go-ahead, theme by theme:
 
 - Where to commit: a Ferlease → on its PR's branch. A nightly → a fix ticket, proposed first (`jira-story` skill, component `cypress`), then a branch for it. Branch, commits and PR follow the `git` rule.
 - Keep the reference test data: add a dedicated entry for what it cannot cover rather than swapping it.
-- Before you propose the commit, rerun the touched specs from `portal/`. Cypress reads `.env` itself, never read it. Filter its output so that no token reaches the context. From VS Code, `env -u ELECTRON_RUN_AS_NODE` is required, otherwise `MODULE_NOT_FOUND`:
+- From `portal/`, rerun a failing spec to reproduce it, and the touched specs before you propose the commit. A spec that passes alone can fail after the one before it in its shard (`SHARDS` in the workflow, run in path order): pass both to `--spec`, a few times with `--config retries=0`. Cypress reads `.env` itself, never read it. Filter its output so that no token reaches the context. From VS Code, `env -u ELECTRON_RUN_AS_NODE` is required, otherwise `MODULE_NOT_FOUND`. `--reporter spec` prints the errors that the configured JUnit reporter only writes to a file:
   ```sh
-  env -u ELECTRON_RUN_AS_NODE npx cypress run --spec "<glob>" 2>&1 \
+  env -u ELECTRON_RUN_AS_NODE npx cypress run --reporter spec --spec "<glob>" 2>&1 \
     | sed -E 's/\x1b\[[0-9;]*m//g; s/(password|client_secret|access_token|refresh_token|id_token)([=":]+ *)[^&", ]+/\1\2<redacted>/gI; s/Bearer [A-Za-z0-9._-]+/Bearer <redacted>/g; s/eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/<jwt>/g' \
     | tail -70
   ```

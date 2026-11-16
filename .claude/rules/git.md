@@ -1,6 +1,6 @@
 # Git
 
-- **Branch:** `feat/rad-xxxx-<slug>` for a story or a task, `fix/rad-xxxx-<slug>` for a bug, in lowercase. Choose it before the first push: GitHub cannot change the branch of a PR, so a rename means a new PR.
+- **Branch:** `feat/rad-xxxx-<slug>` for a story or a task, `fix/rad-xxxx-<slug>` for a bug, in lowercase, 37 characters at most after the `/`: the portal's Ferlease names its Kubernetes objects `radiant-portal-ui-release-<that part>`, capped at 63, and never deploys a longer one. Choose it before the first push: GitHub cannot change the branch of a PR, so a rename means a new PR.
 - **Work in the module's own checkout,** switched to the task's branch, so that the user sees the files in the IDE. No `git worktree` unless the user asks. When the checkout is on another branch or has uncommitted changes, ask before you switch.
 - **Commit message:** `<type>(<scope>): RAD-XXXX <subject>`, the scope optional. Write the subject in lowercase, with no `,`, `(`, `)` or `:`: the portal's commitlint rejects them with misleading errors. One line when it is enough, otherwise one sentence and a short list of the changes. No `Co-Authored-By` trailer.
 - **Each write needs its own go-ahead:** `git commit` (and `--amend`), `git push`, `gh pr create|edit|merge`. Approving the code is not approving the commit, the commit not the push, one push not the next. Silence or an ambiguous answer is not a go-ahead.
