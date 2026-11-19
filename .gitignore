@@ -11,12 +11,13 @@
 .env
 .claude/settings.local.json
 
-# Genetics sheets, local for now
-/docs/genetic/
+# Docs kept on this machine only (genetics sheets, investigation notes)
+/local-docs/
 
 # Personal Claude files, never committed
 /.claude/skills/local-*/
 /.claude/agents/local-*.md
 /.claude/rules/local-*.md
 .idea/
+.vscode/
 .DS_Store

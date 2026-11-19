@@ -1,6 +1,6 @@
 ---
 name: doc-writing
-description: Conventions to write or update a Markdown doc in docs/ - where it goes, how a concept sheet is built, which diagram medium to use (Mermaid, SVG, monospace), how to check a figure by rendering it, the palette, and how to cite code. Use whenever you write or change a doc or a figure.
+description: Conventions to write or update a Markdown doc in docs/ or local-docs/ - where it goes, how a concept sheet is built, which diagram medium to use (Mermaid, SVG, monospace), how to check a figure by rendering it, the palette, and how to cite code. Use whenever you write or change a doc or a figure.
 ---
 
 # Doc writing
@@ -9,9 +9,9 @@ Write in the user's language. A spec in `docs/features/` follows the `feature-sp
 
 ## Place and name
 
-- Placement (one module or several): see Docs placement in `CLAUDE.md`. A topic goes in `docs/<domain>/`, its figures in `docs/<domain>/img/`. File names in kebab-case, after the subject.
+- Placement (one module, several, or this machine only): see Docs placement in `CLAUDE.md`. A topic goes in `docs/<domain>/` or `local-docs/<domain>/`, its figures in an `img/` folder next to it. File names in kebab-case, after the subject.
 - Link each sheet to its sister sheets, and state its prerequisites at the top.
-- Check that the target is versioned (`git check-ignore -v <path>`). If git ignores it, say so: a doc for the team in an ignored folder exists on one machine only.
+- Outside `local-docs/`, check that the target is versioned (`git check-ignore -v <path>`). If git ignores it, say so: a doc for the team in an ignored folder exists on one machine only.
 
 ## Concept sheet
 
@@ -28,7 +28,7 @@ Write in the user's language. A spec in `docs/features/` follows the `feature-sp
 ## Vocabulary              one line per term
 ```
 
-Drop the sections that do not apply. Genetics sheets go in `docs/genetic/concepts/` (`genetician` agent), and the sheet that traces the same concept in the code goes in `docs/genetic/stack/`, under the same file name (`stack-genetician` agent). Each links to the other.
+Drop the sections that do not apply. Genetics sheets go in `local-docs/genetic/concepts/` (`genetician` agent), and the sheet that traces the same concept in the code goes in `local-docs/genetic/stack/`, under the same file name (`stack-genetician` agent). Each links to the other.
 
 ## Diagram medium
 

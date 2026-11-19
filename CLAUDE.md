@@ -53,6 +53,7 @@ For any feature that touches more than one module, use the `cross-module-feature
 
 - **Module-internal** (how the ETL fans out writers, a DAG's design, a React component): stays in the module (e.g. `etl/design/SJRA-*.md`) and is reviewed with the code.
 - **Cross-module** (architecture, ADRs, specs spanning modules): `docs/` here.
+- **Kept on this machine only** (genetics sheets, notes from an investigation): `local-docs/<domain>/`, which git ignores. Unlike `tmp/`, it is not cleaned up at the end of a task.
 
 ## Safety
 
