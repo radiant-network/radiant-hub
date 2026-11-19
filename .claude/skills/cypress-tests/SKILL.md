@@ -12,7 +12,7 @@ Report in the user's language, headings included.
 
 | Run | Workflow (`portal/.github/workflows/`) | Slack links |
 |---|---|---|
-| Nightly | `cypress-nightly.yml`, weekdays 07:00 UTC, against QA (main deployed) | screenshots zip, HTML report, `combined-results.xml` (every test) |
+| Nightly | `cypress-nightly.yml`, weekdays 07:00 UTC or `gh workflow run cypress-nightly.yml --ref main`, against QA as deployed: unlike a Ferlease it does not wait for `/version.txt`, so before a manual run the user checks that QA serves main's head | screenshots zip, HTML report, `combined-results.xml` (every test) |
 | Ferlease | `ferlease-pr.yml`, job `cypress`, against the PR's preview | screenshots zip of the new failures, one HTML report per shard, `combined-results.xml` (every failure, tagged ones included) |
 
 Ask when neither the user nor the report says which run it is.
@@ -20,7 +20,7 @@ Ask when neither the user nor the report says which run it is.
 - `retries.runMode: 2`: a definitive failure has an « (attempt 3) » screenshot. Slack's « new fails » are the failures whose title has no `RAD-`, `SJRA-` or `CLIN-` tag.
 - A green GitHub job proves nothing: the result is the aggregator's Slack post. A Ferlease's files are deleted when its PR closes, a nightly's after 7 days: past that, only the Slack message remains.
 - Ferlease: the specs come from the PR merged with main, the app from the branch head, so they only match once the branch is rebased (otherwise Slack posts « Launch Attempt Failed »). The shards wait up to 30 min for `/version.txt` to serve the pushed SHA. When it never does, no test runs and Slack posts « Failed 💥 » with no report link: check that URL on the preview. A branch over the `git` rule's limit stops before, with « Release Failed ». To rerun without a push, the user removes and re-adds the `cypress` label.
-- Each CI run logs in with one of `cypress@` to `cypress4@email.me`, named in its Slack messages (`Test account:`). A failure seen with one account only points to its grants or its saved filters: rerun with `CYPRESS_USER_USERNAME=<account>` in the `env` of step 6. A run stopped by a push, a label removal or a new nightly posts « Cypress run stopped » and no results.
+- Each CI run logs in with one of `cypress@` to `cypress4@email.me`, named in its Slack messages (`Test account:`). A failure seen with one account only points to its grants or its saved filters: rerun with `CYPRESS_USER_USERNAME=<account>` in the `env` of step 6. A run stopped by a push, a label removal, the PR's merge or a new nightly posts « Cypress run stopped » and no results.
 
 ## 2. Collect the failures without opening a report
 
@@ -42,7 +42,7 @@ From inside `portal/`:
 | Nightly | last `origin/main` commit before the run start: `git rev-list -1 --before=<start> origin/main` | same commit |
 | Ferlease | PR head: `gh pr view <n> --json headRefName,headRefOid` | the head merged with main |
 
-Read through `git show <sha>:<path>`, never the checkout (it may sit on another branch), and check that the stack-trace line matches. Then find what changed since the last green run (the previous weekday nightly, or `git diff origin/main...<head>` for a PR), limited to the spec, its POM, the component and the API that it touches, and whether that PR ran Cypress (`cypress` label). Its green run does not clear it: a flaky spec can pass there. Also check the open PRs that may already fix it (`gh pr list --search`) and recent reference-data or ETL changes.
+Read through `git show <sha>:<path>`, never the checkout (it may sit on another branch), and check that the stack-trace line matches. Then find what changed since the last green run (the previous weekday nightly, or `git diff origin/main...<head>` for a PR), limited to the spec, its POM, the component and the API that it touches, and whether that PR's Cypress run finished: the `cypress` label is not enough, a push or the merge less than ~25 min after its last push stops the run. Its green run does not clear it: a flaky spec can pass there. Also check the open PRs that may already fix it (`gh pr list --search`) and recent reference-data or ETL changes.
 
 ## 4. Group by root cause
 
@@ -59,6 +59,7 @@ One theme = one cause = one fix, whatever the number of specs.
 | 401 in series after passing tests, ~0.1 s each | API token expired mid-spec | Token renewal in `cypress/support/` |
 | Isolated 502, 503 or 504, < 1 s, neighbours green | Gateway blip | Retry in the API command (improvement) |
 | A whole spec red behind one `before` | One setup failure cascading | Diagnose the first failure only |
+| Data not in the state the spec expects (a case already assigned, a saved filter changed), green on rerun | Another run or shard wrote it, or a stopped run never reached its `after()` | Setup that writes the same state on every run (`cypress-tests` rule) |
 | None of the above, code changed in the area | **Regression** | Product fix, not a spec change |
 
 - Cypress stops at the first false assertion of an `it`: the later values were never checked.

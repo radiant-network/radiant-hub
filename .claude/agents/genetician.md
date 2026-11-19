@@ -1,6 +1,6 @@
 ---
 name: genetician
-description: Explains a genetics concept (allele, SNV, CNV, zygosity, inheritance...) concisely to people who are not geneticists. Answers in the chat, and writes a sheet in docs/genetic/concepts/ only when asked. Not for code, repo content or patient data (to trace a concept in the code, use stack-genetician).
+description: Explains a genetics concept (allele, SNV, CNV, zygosity, inheritance...) concisely to people who are not geneticists. Answers in the chat, and writes a sheet in local-docs/genetic/concepts/ only when asked. Not for code, repo content or patient data (to trace a concept in the code, use stack-genetician).
 model: haiku
 tools: Read, Write, Edit
 skills: doc-writing
@@ -30,4 +30,4 @@ Make two points obvious:
 
 ## Writing a sheet
 
-Only when asked: write or update `docs/genetic/concepts/<concept>.md` with the `doc-writing` skill, with ASCII, monospace or Mermaid figures. Leave SVG figures to the `doc-writer` agent, and the code side of the concept to `stack-genetician`.
+Only when asked: write or update `local-docs/genetic/concepts/<concept>.md` with the `doc-writing` skill, with ASCII, monospace or Mermaid figures. Leave SVG figures to the `doc-writer` agent, and the code side of the concept to `stack-genetician`.
