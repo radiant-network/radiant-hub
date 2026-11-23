@@ -33,8 +33,7 @@ Translated from the story (French) on 2026-11-20.
 ### portal (frontend)
 
 - **Filter:** the `Type` filter of the case list sends `case_type` instead of `case_type_code`. Multi-select stays (AC6). The options keep the story's order: Family germline, Solo germline, Somatic, not sorted by label.
-- **Labels:** the options take the column's labels (`case_exploration.analysis_type_code`), so the filter reads exactly like the column tooltip (AC5). Today the options show the API's English names, untranslated.
-- **FR labels:** the screens disagree today (case list "Germinal seul" / "Lignée Germinale Familiale", patient genomic cases tab "Germinal solo" / "Germinal familial"). The clinical team picks one pair in the labels task, used on every screen.
+- **Labels:** the options take the column's existing EN and FR labels (`case_exploration.analysis_type_code`), so the filter reads exactly like the column tooltip (AC5). No new label. Today the options show the API's English names, untranslated.
 - **Persisted filters:** the case list keeps its filters in the browser. The persisted filters drop the keys the list no longer declares, so a stored `case_type_code` selection is dropped once, with no error.
 
 ### mcp
@@ -47,7 +46,7 @@ Translated from the story (French) on 2026-11-20.
 | Module | Area | Kind of change |
 |---|---|---|
 | portal (backend) | case search fields and repository, case filters endpoint, swagger, generated TS and Python clients | new / modified |
-| portal (frontend) | case list filters, EN/FR translations | modified |
+| portal (frontend) | case list filters | modified |
 | portal (cypress) | case list filters page object and filter specs | modified |
 | mcp | case search field list, `search_cases` description, tools doc | modified |
 | etl, infra, bioinfo | none | — |
@@ -58,18 +57,17 @@ Translated from the story (French) on 2026-11-20.
 |---|---|---|---|---|---|
 | 1 | Filter cases by computed type | portal (backend) | `case_type` field on the per-case type join, shared by the filter and the column, new `case_type` entry in the filters response, swagger, TS and Python clients, repository and handler tests | — | yes (additive) |
 | 2 | Case type in the case search tool | mcp | `case_type` in the filterable case fields, `search_cases` description, tools doc, unit test | Task 1 merged | yes once task 1 is deployed |
-| 3 | Labels | portal (frontend) | EN/FR labels of the three types, aligned between the case list, the case header and the patient genomic cases tab, validated by the clinical team | — | yes |
-| 4 | Type filter on the computed type | portal (frontend) | Filter key `case_type`, translated options, Vitest, Cypress filter page object and specs | Tasks 1, 3 | yes once task 1 is deployed |
-| 5 | Remove the old type filter values | portal (backend) | `case_type_code` entry removed from the filters response, swagger, TS and Python clients, handler test | Task 4 | yes once task 4 is deployed |
+| 3 | Type filter on the computed type | portal (frontend) | Filter key `case_type`, options with the column's labels, Vitest, Cypress filter page object and specs | Task 1 | yes once task 1 is deployed |
+| 4 | Remove the old type filter values | portal (backend) | `case_type_code` entry removed from the filters response, swagger, TS and Python clients, handler test | Task 3 | yes once task 3 is deployed |
 
-No UX task: the filter keeps its look, only its values change.
+No UX task: the filter keeps its look, only its values change. No labels task: the filter reuses the column's labels.
 
 ## Merge and rollout order
 
 1. portal backend: task 1. Otherwise the frontend and the MCP send an unknown field and the case search returns 400.
 2. mcp: task 2, right after task 1 merges, since the MCP's CI fails until then. Deploy it after task 1.
-3. portal frontend: tasks 3 then 4.
-4. portal backend: task 5, once task 4 is deployed in each environment. Earlier, the deployed case list hides its `Type` filter, since the filters response no longer has `case_type_code`.
+3. portal frontend: task 3.
+4. portal backend: task 4, once task 3 is deployed in each environment. Earlier, the deployed case list hides its `Type` filter, since the filters response no longer has `case_type_code`.
 
 No migration, no backfill, no feature flag.
 
@@ -86,7 +84,7 @@ No migration, no backfill, no feature flag.
 ### portal (frontend)
 
 - **AC1, AC5, AC6:** Vitest on the filter options: three options in the story's order, the column's labels, several selected.
-- **AC1 to AC6 (Cypress):** the case list filter specs and page object, updated in task 4, apply each type on QA and check the `Type` column of the rows. Check first that QA holds a case of each type.
+- **AC1 to AC6 (Cypress):** the case list filter specs and page object, updated in task 3, apply each type on QA and check the `Type` column of the rows. Check first that QA holds a case of each type.
 
 ### mcp
 
@@ -120,6 +118,7 @@ The story checks no business risk.
 ### portal (frontend)
 
 - The `Type` column keeps its icons and is still not sortable.
+- The FR labels stay as they are: the case list ("Germinal seul" / "Lignée Germinale Familiale") and the patient genomic cases tab ("Germinal solo" / "Germinal familial") keep their own wording. A separate ticket will align them if needed.
 
 ## Open questions
 
