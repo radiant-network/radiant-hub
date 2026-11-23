@@ -21,14 +21,14 @@ Translated from the story (French) on 2026-11-20.
 
 ## Chosen approach
 
-**Summary:** the case search gets a new filterable field `case_type`, computed with the same rule as the `Type` column. The `Type` filter of the case list switches to it, with the column's labels.
+**Summary:** the case search gets a new filterable field `case_type`, computed with the same rule as the `Type` column. It replaces `case_type_code` as the case type filter everywhere: the `Type` filter of the case list, with the column's labels, and the MCP `search_cases` tool.
 
 ### portal (backend)
 
 - **Rule:** the `Type` column already returns `case_type`, computed per case: `somatic` for a somatic case, `germline` for a germline case with one member (patient or fetus), `germline_family` otherwise. The filter reuses this rule as is, so the column and the filter cannot disagree (AC5). That includes a germline case with no family row: its member count is empty, not 1, so both read it as `germline_family`.
-- **Filter mechanism:** `case_type` is a field of a derived table that gives each case its type, from the same member count as today. A case has exactly one type, so a plain join is right for `in` and `not-in`. The search joins it on demand, like the other optional case joins: before the count when `case_type` is filtered, after it otherwise, as today. The column reads the same join, so each query reads `family` once.
+- **Filter mechanism:** the filter computes `case_type` with the column's expression, over the member count join the search already has for the column. A case has exactly one member count row, so a plain join is right for `in` and `not-in`. The search joins it before the count when `case_type` is filtered, after it otherwise, as today, so each query reads `family` once.
 - **Filter values:** `GET /{tenant}/cases/filters` returns a new `case_type` entry with the three codes `germline`, `germline_family`, `somatic`. Its `case_type_code` entry, read only by the case list filter, is removed once the frontend reads `case_type`.
-- **Contract:** two steps, each safe alone. First additive: the new search field and the new filters entry. Then, after the frontend switch, the removal of the `case_type_code` filters entry, which no reader uses by then. `case_type_code` stays a filterable search field, unchanged: the MCP `search_cases` tool filters on it (germline/somatic) and keeps working with its pinned client. Swagger, TS and Python clients are regenerated at each step.
+- **Contract:** two steps, each safe alone. First additive: the new search field and the new filters entry. Then, once the frontend and the MCP filter on `case_type`, `case_type_code` is no longer filterable and its filters entry is removed: no reader uses either by then. It stays a column and a sort. The variant entity case tables share the case search fields, and none of them filters on it. Swagger, TS and Python clients are regenerated at each step.
 
 ### portal (frontend)
 
@@ -38,8 +38,8 @@ Translated from the story (French) on 2026-11-20.
 
 ### mcp
 
-- **Field list:** `case_type` joins the MCP's list of filterable case fields. Its CI compares that list with the portal's `main`, so it fails from the merge of task 1 until this change.
-- **Tool:** the `search_cases` description and its user doc offer `case_type` (`germline`, `germline_family`, `somatic`) next to `case_type_code`, so the agent can tell solo from family cases. The tool passes the field as a plain criterion: no client bump.
+- **Field list:** the MCP's list of filterable case fields must equal the portal's: its CI compares it with the portal's `main`. `case_type` joins it right after task 1 merges, and `case_type_code` leaves it right after task 4 merges. The CI fails between each merge and its MCP change.
+- **Tool:** the `search_cases` description and its user doc offer `case_type` (`germline`, `germline_family`, `somatic`) in place of `case_type_code`, so the agent can tell solo from family cases; every germline case is `germline` and `germline_family` together. The tool passes the field as a plain criterion: no client bump.
 
 ## Modules impacted
 
@@ -55,10 +55,11 @@ Translated from the story (French) on 2026-11-20.
 
 | # | Task | Component | Content | Depends on | Shippable alone? |
 |---|---|---|---|---|---|
-| 1 | Filter cases by computed type | portal (backend) | `case_type` field on the per-case type join, shared by the filter and the column, new `case_type` entry in the filters response, swagger, TS and Python clients, repository and handler tests | — | yes (additive) |
-| 2 | Case type in the case search tool | mcp | `case_type` in the filterable case fields, `search_cases` description, tools doc, unit test | Task 1 merged | yes once task 1 is deployed |
+| 1 | Filter cases by computed type | portal (backend) | `case_type` field computed like the column, over its member count join, new `case_type` entry in the filters response, swagger, TS and Python clients, repository and handler tests | — | yes (additive) |
+| 2 | Case type in the case search tool | mcp | `case_type` in the filterable case fields, `search_cases` description and tools doc on `case_type` in place of `case_type_code`, unit test | Task 1 merged | yes once task 1 is deployed |
 | 3 | Type filter on the computed type | portal (frontend) | Filter key `case_type`, options with the column's labels, Vitest, Cypress filter page object and specs | Task 1 | yes once task 1 is deployed |
-| 4 | Remove the old type filter values | portal (backend) | `case_type_code` entry removed from the filters response, swagger, TS and Python clients, handler test | Task 3 | yes once task 3 is deployed |
+| 4 | Remove the old type filter | portal (backend) | `case_type_code` no longer filterable, its entry removed from the filters response, swagger, TS and Python clients, repository and handler tests | Tasks 2 and 3 | yes once tasks 2 and 3 are deployed |
+| 5 | Old type out of the tool's field list | mcp | `case_type_code` removed from the filterable case fields | Task 4 merged | yes |
 
 No UX task: the filter keeps its look, only its values change. No labels task: the filter reuses the column's labels.
 
@@ -67,7 +68,8 @@ No UX task: the filter keeps its look, only its values change. No labels task: t
 1. portal backend: task 1. Otherwise the frontend and the MCP send an unknown field and the case search returns 400.
 2. mcp: task 2, right after task 1 merges, since the MCP's CI fails until then. Deploy it after task 1.
 3. portal frontend: task 3.
-4. portal backend: task 4, once task 3 is deployed in each environment. Earlier, the deployed case list hides its `Type` filter, since the filters response no longer has `case_type_code`.
+4. portal backend: task 4, once tasks 2 and 3 are deployed in each environment. Earlier, the deployed case list hides its `Type` filter, and a deployed MCP that still filters on `case_type_code` gets a 400.
+5. mcp: task 5, right after task 4 merges, since the MCP's CI fails until then.
 
 No migration, no backfill, no feature flag.
 
@@ -77,7 +79,7 @@ No migration, no backfill, no feature flag.
 
 - **AC2, AC3, AC4, AC6:** repository integration tests (testcontainers) on fixtures with a somatic case, a solo germline case, a family germline case and a prenatal case with a fetus: each value, two values together, and `not-in`.
 - **AC5:** for every fixture case, the `case_type` returned by the list equals the value the filter matches it on.
-- **AC7:** the existing case search tests still pass, `case_type_code` included.
+- **AC7:** the existing case search tests still pass. Task 4 moves the `case_type_code` filter tests to `case_type` and checks that a `case_type_code` filter is refused.
 - **Single read:** a query test checks that a search filtered on `case_type` reads `family` once in the count and once in the list.
 - **Validation:** handler tests, JSON compared to the expected body, for the filters endpoint.
 
@@ -88,7 +90,7 @@ No migration, no backfill, no feature flag.
 
 ### mcp
 
-- **Field list:** the existing unit test compares the list with the portal's backend fields. A tool test checks that a `case_type` filter reaches the API as an `in` criterion.
+- **Field list:** the existing unit test compares the list with the portal's backend fields (tasks 2 and 5). A tool test checks that a `case_type` filter reaches the API as an `in` criterion.
 
 ### sandbox (local)
 
@@ -107,11 +109,11 @@ The story checks no business risk.
 ### all
 
 - No stored case type: the type stays computed at read time. A case whose members change changes type.
-- MCP: only `search_cases` gains the filter. The other tools keep reading the case type as today.
+- MCP: only `search_cases` changes its filter. The other tools keep reading the case type as today.
 
 ### portal (backend)
 
-- `case_type_code` stays a filterable field of the case search, with its germline/somatic values.
+- `case_type_code` stays a column and a sort of the case search.
 - The type rule is unchanged, a germline case with no family row included. A separate ticket will change it if needed.
 - The patient genomic cases tab and the variant entity case tables keep their filters.
 
