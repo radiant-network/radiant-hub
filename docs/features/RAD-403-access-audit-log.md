@@ -14,15 +14,16 @@
 ### portal (backend)
 
 - **Table:** new `auth_audit_log` in Postgres. One row per changed row: time, transaction id, tenant, table, operation (insert, update, delete, snapshot), row key, actor, request id, old row and new row as jsonb. The jsonb copy keeps working when a table gains a column, unlike the positional copy of the interpretation history.
-- **Capture:** one `AFTER INSERT OR UPDATE OR DELETE` row trigger on `users`, `tenant`, `organization`, `role`, `role_action` and `user_role`. Cascades (deleting a role removes its actions and grants) and direct SQL fire it like any API write. An update that changes no value writes nothing, so a login with unchanged Keycloak data leaves no trace.
-- **Append only:** a guard trigger refuses `UPDATE`, `DELETE` and `TRUNCATE` on `auth_audit_log`, for every database role, the API's included.
+- **Capture:** one `AFTER INSERT OR UPDATE OR DELETE` row trigger on `users`, `tenant`, `organization`, `role`, `role_action` and `user_role`. Cascades (deleting a role removes its actions and grants) and direct SQL fire it like any API write. A `BEFORE TRUNCATE` statement trigger on the same six tables writes one delete entry per row about to go. An update that changes no value writes nothing, so re-provisioning an unchanged user (a `create-user` or `update-user` re-run) leaves no trace.
+- **Append only:** a guard trigger refuses `UPDATE`, `DELETE` and `TRUNCATE` on `auth_audit_log`. It protects against mistakes and manual fixes, not against a malicious database administrator: a table owner can still disable a trigger.
 - **Initial history:** the migration that creates the table and the triggers also writes one snapshot entry per existing row, with the actor `migration`, in the same transaction. No change can fall between the snapshot and the first recorded change.
-- **Actor and request id:** each write path sets `app.actor` and `app.request_id` with `set_config(…, true)` at the start of its transaction. The trigger reads them; with nothing set, it records `db:<session_user>`. Formats: `user:<sub>` for an API call (the caller's Keycloak id, the same value `granted_by` holds today), `cmd:<binary>` for the toolbox commands, `migration`.
+- **Later migrations:** every migration that writes one of the six tables (as the action seeds of 000041 and 000042 did) sets `app.actor` to `migration`. Migrations run at API startup with the API's database account, so without it their entries would read `db:<session_user>`, like a manual psql session or a write path that forgot the actor.
+- **Actor and request id:** each write path sets `app.actor` and `app.request_id` with `set_config(…, true)` at the start of its transaction. The trigger reads them; with nothing set, it records `db:<session_user>`. Formats: `user:<sub>` for an API call (the caller's Keycloak id, the same value `granted_by` holds today), `cmd:<binary>` for the toolbox commands, `migration`. The request id is stored for support only: the API reuses an inbound `X-Request-ID`, so a caller can send the same id twice, and nothing is grouped on it.
 - **Commands:** `update-user` runs the `create-user` binary with `-sub`, so both record `cmd:create-user`. `create-tenant` writes the `tenant` row and the default roles of a new tenant, and records `cmd:create-tenant`.
-- **Write paths:** removing a member, the user upsert at login and the grant used by provisioning run in a transaction, so the setting reaches their statements. Editing a role writes only the actions added or removed, instead of deleting and re-inserting the whole set.
+- **Write paths:** removing a member runs in a transaction. Provisioning writes the user and all its grants in one transaction, so a failed grant leaves no half-created member. Editing a role writes only the actions added or removed, instead of deleting and re-inserting the whole set.
 - **Permission:** new tenant action `can_see_auth_audit_log`, grantable (a custom "auditor" role can hold it alone). The migration grants it to `tenant_admin` in every tenant, and it joins the `tenant_admin` defaults for new tenants.
 - **Search:** `GET /{tenant}/access_logs`, gated by `requireAction(can_see_auth_audit_log)` and listed in the tenant route guard. Criteria: member, role, actor, type of change, date range. Pagination by page index and page size with the total count, as the tenant users list does. Sorted from the most recent operation.
-- **Operations:** entries are grouped by request id, or by transaction id when there is none (direct SQL, migration). Pagination and the total count apply to operations, not to entries. Each change is returned as the fields that differ (update), or the added or removed item.
+- **Operations:** entries are grouped by transaction id. Each access write path is one transaction, and direct SQL and migrations have one too. Pagination and the total count apply to operations, not to entries. Each change is returned as the fields that differ (update), or the added or removed item.
 - **Types of change:** members (grants of the `member` role), role grants (the other grants), role definitions (`role`, `role_action`), organizations (`organization`).
 - **Tenant isolation:** every read filters on the requested tenant. `users` and `tenant` entries are never returned: they belong to no tenant, or say when a tenant was created. A member's name and email come from `users` at read time.
 - **Export:** `GET /{tenant}/access_logs/export`, same criteria, permission and isolation. One CSV row per change, with the columns of RAD-407, streamed from the database. Values that start like a spreadsheet formula get a `'` prefix. UTF-8 with a byte order mark, file name `access-log-<tenant>-<date>.csv`.
@@ -49,8 +50,8 @@
 
 | # | Task | Component | Content | Depends on | Shippable alone? |
 |---|---|---|---|---|---|
-| 1 | RAD-404 Audit log, initial history, new action | portal (backend) | Migration: `auth_audit_log`, capture and guard triggers, snapshot, `can_see_auth_audit_log` seeded and granted; default roles updated | — | yes (records changes, nothing reads them yet) |
-| 2 | RAD-405 Actor and request id | portal (backend) | Actor and request id set in each access write path; the three paths in a transaction; role edit by difference; toolbox commands | 1 | yes |
+| 1 | RAD-404 Audit log, initial history, new action | portal (backend) | Migration: `auth_audit_log`, row, truncate and guard triggers, snapshot, `can_see_auth_audit_log` seeded and granted; default roles updated; test that no migration leaves a `db:` actor | — | yes (records changes, nothing reads them yet) |
+| 2 | RAD-405 Actor and request id | portal (backend) | Actor and request id set in each access write path; member removal in a transaction, provisioning (user and grants) in one transaction; role edit by difference; toolbox commands | 1 | yes |
 | 3 | RAD-406 Search access logs | portal (backend) | `GET /{tenant}/access_logs`, grouping, pagination, isolation; swagger and clients | 1 | yes |
 | 4 | RAD-407 CSV export | portal (backend) | `GET /{tenant}/access_logs/export`; swagger and clients | 3 | yes |
 | 5 | RAD-408 History section | portal (frontend), cypress | Navigation entry, table, filters, deep links, labels, Admin specs | 3 | yes once 3 is deployed |
@@ -71,14 +72,14 @@ No backfill beyond the snapshot. No feature flag: the History entry only appears
 
 ### portal (backend)
 
-- **RAD-404:** repository tests on a Postgres container: one test per audited table and operation, the role delete cascade, the no-op update, the `db:` fallback, the guard on `UPDATE`, `DELETE` and `TRUNCATE`, the rollback. A migration test checks the snapshot count and the new grant.
-- **RAD-405:** a test per access write path asserts the actor and request id of its entry; one test runs a request end to end through the router and checks the `X-Request-ID` value. Role edit: one added and one removed action give two entries.
-- **RAD-406:** repository tests on two tenants: isolation, each criterion, grouping by request and by transaction, pagination and total count, sort. Handler tests with JSON comparison, route guard test.
+- **RAD-404:** repository tests on a Postgres container: one test per audited table and operation, `TRUNCATE` on an audited table, the role delete cascade, the no-op update, the `db:` fallback, the guard on `UPDATE`, `DELETE` and `TRUNCATE`, the rollback. A migration test checks the snapshot count and the new grant, and that after every migration has run no entry has a `db:` actor (it fails when a later migration forgets `app.actor`).
+- **RAD-405:** a test per access write path asserts the actor and request id of its entry; one test runs a request end to end through the router and checks the `X-Request-ID` value. Provisioning: a grant that fails leaves neither the user row nor any grant. Role edit: one added and one removed action give two entries.
+- **RAD-406:** repository tests on two tenants: isolation, each criterion, grouping by transaction (two requests sent with the same `X-Request-ID` stay two operations), pagination and total count, sort. Handler tests with JSON comparison, route guard test.
 - **RAD-407:** handler test comparing the file with the search for the same criteria; unit tests for the formula prefix, the RFC 4180 quoting and the byte order mark.
 
 ### portal (frontend)
 
-- **Cypress (RAD-408, RAD-409):** the components are tested end to end only, by new Admin specs on QA: History entry, columns, each filter, pagination, links from Users and Roles, download of the export. The specs read the snapshot entries every QA tenant has, and write no access change.
+- **Cypress (RAD-408, RAD-409):** the components are tested end to end only, by new Admin specs on QA: History entry, columns, each filter, pagination, links from Users and Roles, download of the export. The specs write no access change. Other specs and people add entries on QA at any time, so each spec filters on a fixed member or role and asserts on its rows, never on a count or on the first rows.
 - **Cypress (RAD-408), rendering:** the snapshot holds only additions, so one spec stubs the access log response with a fixture that holds an addition, a removal, an update and each actor kind, and checks how each one is shown.
 
 ### QA (manual)
@@ -91,8 +92,8 @@ No backfill beyond the snapshot. No feature flag: the History entry only appears
 | Risk (from the story) | How it is covered |
 |---|---|
 | Patient or identifying data (names and emails of members and actors) | Tenant filter in every read, `users` and `tenant` entries never returned, two-tenant isolation tests on the search and the export |
-| Traceability and audit (no change may escape, log cannot be rewritten) | Trigger on every audited table, cascade and direct SQL tests, guard trigger tests, actor tested on every write path |
-| False answer from a wrong grouping or rendering | Grouping tests by request and by transaction, export compared with the search, Cypress rendering spec on every kind of change |
+| Traceability and audit (no change may escape, log cannot be rewritten) | Row and truncate triggers on every audited table, cascade, direct SQL and truncate tests, guard trigger tests, actor tested on every write path and on every migration. Not covered: a database administrator who disables a trigger |
+| False answer from a wrong grouping or rendering | Grouping by transaction (not by the caller-supplied request id) with its tests, export compared with the search, Cypress rendering spec on every kind of change |
 
 ## Frozen scope
 
