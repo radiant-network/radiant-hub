@@ -31,6 +31,10 @@ make pull                           # fast-forward every clean repo
 
 Bootstrap is idempotent. Re-run it at any time to add a repo you skipped (e.g. an infra or bioinfo repo). Paths that already exist are never touched.
 
+## Claude Code setup
+
+The rules, skills and agents in `.claude/`, how they combine with each module's own, the personal folders (`tmp/`, `local-docs/`) and the Cypress CI: see the [overview sheet](https://claude.ai/artifact/5y9oyTKMMTfeAb4gB6jnyL) (in French, November 2026).
+
 ## Working on a cross-module feature
 
 Example: *"Add COSMIC information on variant"* touches the ETL and the portal.

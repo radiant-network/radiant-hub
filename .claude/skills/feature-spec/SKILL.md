@@ -5,7 +5,7 @@ description: Write or rework a cross-module feature spec in docs/features/ from 
 
 # Feature spec
 
-The output is one Markdown file in `docs/features/`. It follows `docs/features/0000-template.md`. A human reviewer approves it in **fifteen minutes at most**, before any code is written. Write for that reader.
+The output is one Markdown file in `docs/features/`. It follows `docs/features/0000-template.md`. A human reads it in **fifteen minutes at most**, then takes the time needed to challenge and approve it, before any code is written. Write for that reader.
 
 **Level of detail:** use `docs/features/RAD-15-cosmic-cmc-snv.md` as the reference (about 110 lines). A spec says *what* changes and *why*. The *how* (SQL, Go types, DAG task internals, error codes per route) comes with the code and is reviewed in the PRs.
 
@@ -59,7 +59,7 @@ Do not write code. Do not create branches. Do not commit unless the user asks.
 - Remove the template's guidance text (the quotes and the explanation paragraphs under each heading). Keep only your content.
 - **No appendices, no Linked PRs, no extra sections.** Content that the template has no section for usually does not belong in the spec.
 - Section by section:
-  - **Story:** link, reviewer, status, one branch `feat/rad-xxxx-<slug>` for all repos.
+  - **Story:** link, reviewer, status, branch (`git` rule).
   - **Chosen approach:** a one-line **Summary**, then one `### <module>` subsection per module with a bullet list (`- **Label:** …`), no table and no diagram (see `RAD-93-slivar-inheritance.md`). Per module: the approach and the integration point (the existing component it plugs into, by name). No rejected alternatives section.
   - **Modules impacted:** one row per module. The areas (components, not file paths) in one cell, comma-separated.
   - **Tasks:** the template table. One task = one intent = usually one PR. Code, IaC and docs only. Operations (deploy, scripts to run, account setup, QA checks, first load) go in the rollout order. Add a Labels or UX task when the story needs one, or say why not in one line.

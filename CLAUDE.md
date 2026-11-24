@@ -43,7 +43,7 @@ To write or create a Jira story (project RAD on ferlab-crsj.atlassian.net), use 
 For any feature that touches more than one module, use the `cross-module-feature` skill. The rules:
 
 - The spec lives in `docs/features/RAD-xxxx-<slug>.md` (from `docs/features/0000-template.md`).
-- Use the **same branch name in every impacted repo** (format: see the `git` rule).
+- **One branch per task,** with the same name in every repo the task touches (see the `git` rule).
 - Run git and gh from inside the module (see the `bash-commands` rule). At the hub root, they act on the hub.
 - Open **one PR per repo**. Each links to the spec and to the sibling PRs.
 - Merge in dependency order: schema / ETL → portal backend → frontend and MCP.

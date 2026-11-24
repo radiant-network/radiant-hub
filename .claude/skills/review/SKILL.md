@@ -10,13 +10,13 @@ Deliver only the review: no narration of the steps, no recap of what you fetched
 
 ## 1. Find the branch
 
-- Run `make status`. In each checked-out module, or only in the one given as argument: `cd <module>`, `git fetch origin`, then `git branch --list -a -i "*rad-xxxx*"`. Old tickets use `sjra-xxxx`.
-- The same branch in several modules is one feature: review them together. No branch found: ask for it.
+- Run `make status`. In each checked-out module, or only in the one given as argument: `cd <module>`, `git fetch origin`, then `git branch --list -a -i "*rad-xxxx*"` for the ticket and for each of its sub-tasks. Old tickets use `sjra-xxxx`.
+- All the branches found are one feature: review them together. No branch found: ask for it.
 
 ## 2. Gather the context
 
 - **Ticket:** read it as the `jira` rule says, QA bounce check included. If it comes from a prod incident, ask before you read its description and comments (`confidentiality` rule).
-- **Story:** its acceptance criteria and its out of scope.
+- **Story:** its acceptance criteria and its out of scope. A sub-task is reviewed against its parent story and that story's spec, limited to its row of the spec's Tasks.
 - **Spec:** `docs/features/RAD-xxxx-*.md` if it exists: Chosen approach, Modules impacted, Tasks, Test strategy, Frozen scope, Deviation log. A Small story may have none: say so.
 - **Diff, per module,** from inside it and one call each: `git merge-base origin/main <branch>`, then `git diff <sha> <branch>`. Use `origin/<branch>` when there is no local branch. For lock files and generated files (API clients, swagger output), check only that they were regenerated.
 - **Module rules:** the `CLAUDE.md` and `.claude/rules/` of each folder that the diff touches.
@@ -34,7 +34,7 @@ Use these sections, in this order. Omit a section that has nothing to say, title
 5. **Regression risks:** existing behaviour or consumers that the change can break.
 6. **Code quality:** the hub and module rules, error handling, security (injection, exposed data), dead code, leftover TODOs.
 7. **Docs:** what to update (a module `CLAUDE.md`, the user docs, the spec, the Postman collection of a changed endpoint).
-8. **Tests:** whether the automated tests prove the ACs (the spec's Test strategy). Cypress (`cypress-tests` rule): every spec, test data or POM that the diff impacts, updated by the branch or not, including those reading a field whose computation changes under the same name (`git grep <field|value> <branch> -- cypress/` in `portal/`). Flag the ones the branch does not update, a spec that writes shared QA data and breaks when runs overlap or stop, a new behaviour with no spec (propose one) and a portal PR without the `cypress` label. Then the manual tests: `**Scenario** — goal`, steps, expected result. The golden path and the likely edge cases, nothing outside the ticket.
+8. **Tests:** whether the automated tests prove the ACs (the spec's Test strategy), with no more tests than needed: flag per the `tests` rule each test that repeats existing coverage, a generic helper replayed per field, or a new serial or container test where an existing one could be extended. Cypress (`cypress-tests` rule): every spec, test data or POM that the diff impacts, updated by the branch or not, including those reading a field whose computation changes under the same name (`git grep <field|value> <branch> -- cypress/` in `portal/`). Flag the ones the branch does not update, a spec that writes shared QA data and breaks when runs overlap or stop, a new behaviour with no spec (propose one) and an approved portal PR without the `cypress` label. Then the manual tests: `**Scenario** — goal`, steps, expected result. The golden path and the likely edge cases, nothing outside the ticket.
 9. **PR feedback:** per human comment, a summary, then addressed, partly addressed or not addressed on the branch, and what remains. Bot comments only when still relevant. End with a table `Reviewer | Verdict | Addressed | Pending`.
 10. **QA feedback,** only after a QA bounce: per defect, still relevant (yes, no, debatable, with a reason), addressed, partly addressed or not addressed, and what remains. End with a table `Defect | Relevant | Status | Remaining`.
 
