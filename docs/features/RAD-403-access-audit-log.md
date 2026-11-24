@@ -78,8 +78,8 @@ No backfill beyond the snapshot. No feature flag: the History entry only appears
 
 ### portal (frontend)
 
-- **RAD-408, RAD-409:** Vitest on the change cell (added, removed, updated) and the actor cell.
-- **Cypress (RAD-408, RAD-409):** new Admin specs on QA: History entry, columns, each filter, pagination, links from Users and Roles, download of the export. The specs read the snapshot entries every QA tenant has, and write no access change.
+- **Cypress (RAD-408, RAD-409):** the components are tested end to end only, by new Admin specs on QA: History entry, columns, each filter, pagination, links from Users and Roles, download of the export. The specs read the snapshot entries every QA tenant has, and write no access change.
+- **Cypress (RAD-408), rendering:** the snapshot holds only additions, so one spec stubs the access log response with a fixture that holds an addition, a removal, an update and each actor kind, and checks how each one is shown.
 
 ### QA (manual)
 
@@ -92,7 +92,7 @@ No backfill beyond the snapshot. No feature flag: the History entry only appears
 |---|---|
 | Patient or identifying data (names and emails of members and actors) | Tenant filter in every read, `users` and `tenant` entries never returned, two-tenant isolation tests on the search and the export |
 | Traceability and audit (no change may escape, log cannot be rewritten) | Trigger on every audited table, cascade and direct SQL tests, guard trigger tests, actor tested on every write path |
-| False answer from a wrong grouping or rendering | Grouping tests by request and by transaction, export compared with the search, cell unit tests |
+| False answer from a wrong grouping or rendering | Grouping tests by request and by transaction, export compared with the search, Cypress rendering spec on every kind of change |
 
 ## Frozen scope
 
