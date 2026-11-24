@@ -1,6 +1,6 @@
 # RAD-xxxx: Title
 
-> Written by the developer before the first line of code. Approved by the assigned reviewer in fifteen minutes at most. May be generated with AI: the developer is accountable for it.
+> Written by the developer before the first line of code. Readable in fifteen minutes at most; the assigned reviewer then takes the time needed to challenge and approve it. May be generated with AI: the developer is accountable for it.
 >
 > Required for **Standard** and **Complex** stories. Optional for **Small** ones. The story itself follows [`../stories/story-template.md`](../stories/story-template.md).
 
@@ -9,7 +9,7 @@
 - **Link:** **[ticket]**
 - **Assigned reviewer:** **[Name]**
 - **Status:** Draft | In review | Approved | In progress | Done
-- **Branch (all repos):** `feat/rad-xxxx-<slug>`
+- **Branch:** `feat/rad-xxxx-<slug>` in every repo, or one per task, named after its Jira sub-task
 
 ## Chosen approach
 

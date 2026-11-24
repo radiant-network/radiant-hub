@@ -57,4 +57,4 @@ Keep the reviewer in the description. Don't set them as assignee unless the user
 ## 5. Next step
 
 - **Small:** nothing else.
-- **Standard / Complex:** an implementation plan is required before coding. Offer to start it from `docs/features/0000-template.md`. When the story spans several modules, use the `cross-module-feature` skill with the new ticket key.
+- **Standard / Complex:** an implementation plan is required before coding. Offer to write it with the `feature-spec` skill. When the story spans several modules, use the `cross-module-feature` skill with the new ticket key.

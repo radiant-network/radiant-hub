@@ -1,6 +1,6 @@
 ---
 name: cross-module-feature
-description: Drive a feature that spans several Radiant modules (etl, portal, mcp) from the hub — spec, same-named branches, per-module implementation, PRs in merge order. Use when a request touches more than one module, or names an SJRA ticket whose scope crosses modules.
+description: Drive a feature that spans several Radiant modules (etl, portal, mcp) from the hub — spec, branches, per-module implementation, PRs in merge order. Use when a request touches more than one module, or names a RAD ticket whose scope crosses modules.
 ---
 
 # Cross-module feature
@@ -10,12 +10,12 @@ Follow these steps in order. Don't skip the boundary check (step 4): that's wher
 ## 1. Spec
 
 - Run `make status` to see which modules are checked out. If one you need is missing, ask the user to run `make bootstrap`.
-- If `docs/features/RAD-xxxx-*.md` exists, read it. Otherwise copy `docs/features/0000-template.md` and fill it in with the user.
+- If `docs/features/RAD-xxxx-*.md` exists, read it. Otherwise write it with the `feature-spec` skill.
 - Read the `CLAUDE.md` of every impacted module before planning its part.
 
 ## 2. Branches
 
-Create the same branch in every impacted repo, one call per line, the last one guarded (see the `bash-commands` rule):
+Create each task's branch (`git` rule) in every repo it touches, one call per line, the last one guarded (see the `bash-commands` rule):
 
 ```sh
 cd <module>
