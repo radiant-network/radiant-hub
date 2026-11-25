@@ -10,6 +10,8 @@
 - **Assigned reviewer:** **[Name]**
 - **Status:** Draft | In review | Approved | In progress | Done
 - **Branch:** `feat/rad-xxxx-<slug>` in every repo, or one per task, named after its Jira sub-task
+- **Acceptance criteria** (copied from the story on YYYY-MM-DD):
+  - **AC1:** what it checks
 
 ## Chosen approach
 

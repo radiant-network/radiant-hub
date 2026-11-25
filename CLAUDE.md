@@ -34,6 +34,8 @@ See `docs/architecture/overview.md` for the diagram. The boundaries:
 
 Most cross-module bugs happen at these boundaries. When a change touches one, check both sides (writer and readers) in the same piece of work. The dependencies are not documented: they are computed from the code. To find every reader of an item, or the impacts of changing it, use the `impact` skill.
 
+The MCP's CI tests its copies of the schema, the tenant views and the API fields against the `main` of the ETL and of the portal. So a portal or ETL change can break it, whatever the story's scope. Check that it still passes, and plan an MCP task if it would fail.
+
 ## Stories
 
 To write or create a Jira story (project RAD on ferlab-crsj.atlassian.net), use the `jira-story` skill. It follows `docs/stories/story-template.md`.

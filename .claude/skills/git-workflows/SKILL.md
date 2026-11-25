@@ -9,6 +9,8 @@ Run each command from inside the module, one per call, with each write guarded (
 
 ## Rebase on main
 
+On a private branch only. On a shared one, merge `origin/main` instead (`git` rule).
+
 1. `git status`, then `git stash list`. If there is uncommitted work, ask before you stash it: `git stash push -u -m "rebase <branch>"`.
 2. `git fetch origin`, then `git rebase origin/main`.
 3. On a conflict: resolve it, `git add` the files, then `git rebase --continue`. If both sides changed the same logic on purpose, stop and show both sides. `git rebase --abort` restores the branch.
@@ -17,7 +19,7 @@ Run each command from inside the module, one per call, with each write guarded (
 
 ## Fold a fix into an earlier commit
 
-Keeps one commit per concern after a review fix. It rewrites history.
+Keeps one commit per concern after a review fix. It rewrites history: on a private branch only (`git` rule).
 
 1. `git branch backup/<branch>-pre-fold`, a safety ref.
 2. `git add <files>`, then `git commit --fixup=<target sha>`, one per target commit. Commit hooks such as commitlint ignore `fixup!` subjects: `--no-verify` is never needed.
@@ -26,7 +28,7 @@ Keeps one commit per concern after a review fix. It rewrites history.
 
 ## PR body from a file
 
-Backticks and quotes break `--body "…"`. Write the body to `tmp/<topic>/pr-body.md` and pass `--body-file`. Delete the file once the last `gh pr create|edit` succeeds. When the PR is open, ask the user to tell you when it is merged, for the cleanup below.
+Backticks and quotes break `--body "…"`. Write the body to `tmp/<topic>/pr-body.md` and pass `--body-file`. On the portal, `gh pr edit` fails with a Projects (classic) deprecation error: update the body with `gh api -X PATCH repos/<owner>/<repo>/pulls/<n> -F body=@<file>`. Delete the file once the last `gh pr create|edit` or `gh api` call succeeds. When the PR is open, ask the user to tell you when it is merged, for the cleanup below.
 
 ## Clean up merged branches
 
