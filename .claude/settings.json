@@ -29,6 +29,7 @@
       "Bash(git branch -D*)",
       "Bash(gh pr create*)",
       "Bash(gh pr edit*)",
+      "Bash(gh api -X PATCH*)",
       "Bash(gh pr merge*)",
       "Bash(gh pr comment*)",
       "Bash(terraform*)",

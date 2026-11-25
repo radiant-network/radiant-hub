@@ -1,6 +1,6 @@
 ---
 name: git-workflows
-description: Step-by-step git procedures in the hub and its modules - rebase a branch on main, fold a fix into an earlier commit, pass a PR body from a file, clean up merged branches and their working files. Use when the user asks for one of them.
+description: Step-by-step git procedures in the hub and its modules - rebase a branch on main, pass a PR body from a file, clean up merged branches and their working files. Use when the user asks for one of them.
 ---
 
 # Git workflows
@@ -17,18 +17,9 @@ On a private branch only. On a shared one, merge `origin/main` instead (`git` ru
 4. Pop the stash by its explicit ref (`git stash pop stash@{N}`): the index shifts when other entries exist. A pop that conflicts keeps the entry: drop it only once the user validates the resolution.
 5. The history changed: the push needs `--force-with-lease`, with its own go-ahead.
 
-## Fold a fix into an earlier commit
-
-Keeps one commit per concern after a review fix. It rewrites history: on a private branch only (`git` rule).
-
-1. `git branch backup/<branch>-pre-fold`, a safety ref.
-2. `git add <files>`, then `git commit --fixup=<target sha>`, one per target commit. Commit hooks such as commitlint ignore `fixup!` subjects: `--no-verify` is never needed.
-3. `git config sequence.editor true`, then `git rebase -i --autosquash origin/main`, then `git config --unset sequence.editor`. Without `-i`, `--autosquash` does nothing and still reports success.
-4. Check that `git log --oneline origin/main..HEAD` shows no `fixup!`, and that `git show --stat <target>` holds the files. Then delete the backup branch.
-
 ## PR body from a file
 
-Backticks and quotes break `--body "…"`. Write the body to `tmp/<topic>/pr-body.md` and pass `--body-file`. On the portal, `gh pr edit` fails with a Projects (classic) deprecation error: update the body with `gh api -X PATCH repos/<owner>/<repo>/pulls/<n> -F body=@<file>`. Delete the file once the last `gh pr create|edit` or `gh api` call succeeds. When the PR is open, ask the user to tell you when it is merged, for the cleanup below.
+Backticks and quotes break `--body "…"`. Write the body to `tmp/<topic>/pr-body.md` and pass `--body-file`. On the portal, `gh pr edit` fails with a Projects (classic) deprecation error: update the body with `gh api -X PATCH repos/{owner}/{repo}/pulls/<n> -F body=@<file>` (`gh` fills `{owner}` and `{repo}` from the current repo). Delete the file once the last `gh pr create|edit` or `gh api` call succeeds. When the PR is open, ask the user to tell you when it is merged, for the cleanup below.
 
 ## Clean up merged branches
 
