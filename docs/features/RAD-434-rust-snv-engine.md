@@ -44,7 +44,8 @@
 - **Image:** `Dockerfile.radiant.operator` gets a `rust-builder` stage that builds the abi3 wheel with maturin. The final stage installs it and sets `ENV RADIANT_SNV_ENGINE=python` (build argument, default `python`). The POC stage cross-compiles from an arm64 host; on the amd64 runner it builds natively, with a pinned toolchain (`RUST_TOOLCHAIN=1.91.0`) and a pinned rustup installer.
 - **CI:** a new job in `test.yml` installs the Rust toolchain, runs `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, `maturin develop --release`, then the three Rust test files. An environment variable in this job turns the `importorskip` of the parity tests into a failure.
 - **Make targets:** `rust-develop`, `rust-test`, `rust-bench`.
-- **Phase timings (both engines):** each SNV writer task logs one end-of-task line, and emits OTel spans, with the duration of each phase: VCF decode and row building, Parquet writing, upload, plus the file count and the Parquet bytes per table. Today only germline has spans (`process_task_<id>`, `vcf_task_<id>`), and they do not split the phases. The gate needs this split to explain where the time goes in situ.
+- **Phase timings (both engines):** each SNV writer task logs one end-of-task line, and emits OTel spans, with the duration of each phase: VCF decode and row building, Parquet writing, upload, plus the file count and the Parquet bytes per table. Today only germline has spans (`process_task_<id>`, `vcf_task_<id>`), and they do not split the phases. The gate needs this split to explain where the time goes in situ. On the Rust path, decoding and writing run in one call (`reader.write_parquet` → `parquet_sink::drain`, which pulls each batch from `next_batches` and writes it), so Python cannot time them apart: `drain` measures both phases and `stats()` returns the durations. Python times the upload.
+- **Docs:** `rust/radiant_vcf/README.md` (layout, use, parity, benchmark, known differences, pre-existing bugs); the ETL CLAUDE.md (source layout, engine switch, `make` targets); one upgrade note.
 
 ### Performance gate
 
@@ -53,7 +54,7 @@ The gate decides if the Rust engine becomes permanent. It runs in the rollout st
 | Deployment | Context | Writer limits today |
 |---|---|---|
 | QLIN (QA, then prod) | K8s `KubernetesPodOperator` | `_snv_container_resources`: 1 CPU, 4 Gi request, 6 Gi limit, no `ephemeral-storage` |
-| CHOP (MWAA) | ECS Fargate `EcsRunTaskOperator` | the operator task definition (`RADIANT_TASK_OPERATOR_TASK_DEFINITION`): not in `radiant-portal-deployment`, see Open questions |
+| CHOP (MWAA) | ECS Fargate `EcsRunTaskOperator` | the operator task definition (`RADIANT_TASK_OPERATOR_TASK_DEFINITION`), `airflow_ecs_operator_task` in `radiant-portal-deployment` (`deployment/terraform/airflow/ecs.tf`): 2 vCPU (`cpu = 2048`), 5 GiB (`memory = 5120`), no `ephemeral_storage` block, so the [Fargate default task storage](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/fargate-task-storage.html). One task definition for every operator task, not only SNV |
 
 - **Protocol:** on each deployment, import the same set of tasks once per engine (at least one genome-wide trio, one WXS partition, one somatic tumor-normal task). Same image, same part, only `RADIANT_SNV_ENGINE` changes.
 - **Measured, per engine:**
@@ -68,7 +69,6 @@ The gate decides if the Rust engine becomes permanent. It runs in the rollout st
   - `commit_partitions` and phase 4 not more than 10% slower than with the Python engine.
 - **Evaluation report:** one page in `docs/` that gives the results per deployment and explains them: which phase got faster and by how much, and the effects on the rest of the stack (pod sizing, disk, Iceberg file layout, commit, StarRocks inserts, `import_vcf` pool and part duration). The reviewer of the rollout story and the ETL lead sign it off. Without this sign-off, the story "Remove the Python SNV extraction" does not start and the default engine stays `python`.
 - **Fail:** the environment goes back to `python` (one variable, no re-import needed: the rows are the same). A deviation in this log, or a new ticket, names the cause.
-- **Docs:** `rust/radiant_vcf/README.md` (layout, use, parity, benchmark, known differences, pre-existing bugs); the ETL CLAUDE.md (source layout, engine switch, `make` targets); one upgrade note.
 
 ## Modules impacted
 
@@ -76,6 +76,7 @@ The gate decides if the Rust engine becomes permanent. It runs in the rollout st
 |---|---|---|
 | etl | `rust/radiant_vcf/` crate, `bench.py`, `gen_tables.py`, README | new |
 | etl | `radiant/tasks/vcf/snv/rust_engine.py` | new |
+| etl | Phase timings (Task 6): `src/parquet_sink.rs` (`drain` timers), `src/lib.rs` (`stats()`), `rust_engine.py` (upload timer, log line), spans in `germline/process.py` and `somatic/process.py` (somatic: new) | new / modified |
 | etl | `radiant/tasks/vcf/snv/germline/process.py` (switch), `somatic/process.py` (switch, `check_samples`) | modified |
 | etl | `radiant/dags/operators/k8s.py`, `ecs.py` (pass `RADIANT_SNV_ENGINE`) | modified |
 | etl | `Dockerfile.radiant.operator`, `.dockerignore`, `Makefile` | modified |
@@ -89,12 +90,12 @@ The portal, the MCP, the bioinfo pipelines and the StarRocks SQL do not change. 
 
 | # | Task | Component | Content | Depends on | Shippable alone? |
 |---|---|---|---|---|---|
-| 1 | Rust engine behind the switch | etl | Rebase the POC on `main`, drop the two seed commits. Crate, `rust_engine.py`, the two switches, `check_samples`, parity and engine tests, Rust variant of the htslib error test, README | — | yes: default `python` |
+| 1 | Rust engine behind the switch | etl | Rebase the POC on `main`, drop the two seed commits (`seeds.sql` only: commit `10699d1e` also changes `RUST_BATCH_RECORDS` to `1_000` in `rust_engine.py`, keep that part). Crate, `rust_engine.py`, the two switches, `check_samples`, parity and engine tests, Rust variant of the htslib error test, README | — | yes: default `python` |
 | 2 | Engine variable in the operators | etl | `RADIANT_SNV_ENGINE` passed by the K8s and ECS SNV operators, unit test of the pod environment | Task 1 | yes: empty = image default |
 | 3 | Image build | etl | `rust-builder` stage, native amd64 build on the runner, pinned toolchain and installer, smoke check `import radiant_vcf` in the build | Task 1 | yes |
 | 4 | CI and security gates | etl | Rust CI job (fails when the parity tests skip); Cargo dependencies in the security checks | Task 1 | yes |
 | 5 | Docs and upgrade note | etl | ETL CLAUDE.md, `upgrade-notes/RAD-434.yaml` | Tasks 1–3 | yes |
-| 6 | Phase timings for the gate | etl | End-of-task log line and OTel spans per phase, in both engines (germline and somatic), unit test of the log line | Task 1 | yes: logs only |
+| 6 | Phase timings for the gate | etl | Rust: timers in `parquet_sink::drain` (decode and rows vs Parquet writing), returned by `stats()`. Python: upload timer, end-of-task log line and OTel spans per phase in both engines (germline and somatic; somatic has no span today). Unit test of the log line | Task 1 | yes: logs only |
 
 One branch and one PR for the story; the tasks are the review order inside the PR. No UX task and no Labels task: nothing changes for the users of the portal.
 
@@ -133,7 +134,7 @@ No migration, no backfill, no Iceberg schema change. The two engines write the s
 | Module | Questions |
 |---|---|
 | etl | • **Cargo dependencies in the security gates:** `release-gate.yml` reads the open Dependabot alerts of every ecosystem, and `trivy.yml` scans the three images and the Dockerfiles. Is `rust/radiant_vcf/Cargo.lock` in the dependency graph (Dependabot alerts, `dependency-review.yml`), and does Trivy see the crates inside the compiled extension? Proposal: check both on the PR; if Trivy does not see them, add a Trivy filesystem scan of `Cargo.lock` to `trivy.yml` and to the release gate.<br>• **Disk of the SNV pods:** the Rust path writes the Parquet files on local disk before the upload, about 2.3 GB for a genome-wide trio, next to the 1.5 GB VCF. The K8s SNV resources set no `ephemeral-storage` (`_snv_container_resources`). Proposal: add an optional `RADIANT_TASK_OPERATOR_SNV_EPHEMERAL_STORAGE`, as the COSMIC and IGV profiles do, in the rollout story; this story only documents the need in the upgrade note.<br>• **Operator variable vs image default:** proposal above (operators pass the Airflow value, empty = image default). The other choice is two images, which doubles the build and the scans. |
-| infra | • **ECS ephemeral storage of the SNV task definition:** enough for the local Parquet files of a trio? To check in the infra repo before the rollout story; no change here.<br>• **Where the ECS operator task definition lives:** `radiant-portal-deployment` defines only the OpenDataLake one (`opendatalake_ecs.tf`). Find the repo that defines `RADIANT_TASK_OPERATOR_TASK_DEFINITION` (CPU, memory, ephemeral storage) before the gate runs on ECS. |
+| infra | • **ECS ephemeral storage of the operator task definition:** `airflow_ecs_operator_task` (`radiant-portal-deployment`, `deployment/terraform/airflow/ecs.tf`) sets no `ephemeral_storage`, so the Fargate default applies. Is it enough for the 1.5 GB VCF, its index and about 2.3 GB of local Parquet files of a trio? Proposal: check before the gate runs on ECS; if not, add an `ephemeral_storage` block in the rollout story (this task definition serves every operator task). No change here. |
 | gate | • **Pass thresholds:** 4× (same as AC10) and 10% for commit and phase 4 are proposals. Confirm them, or set them per deployment.<br>• **Sign-off:** proposal: the reviewer of the rollout story and the ETL lead. CHOP and QLIN may each want their own sign-off.<br>• **Gate tasks:** which real tasks per deployment? On prod, only counts, durations and hashes leave the environment (see the `confidentiality` rule). |
 | story / product | • **Reviewer:** who reads Rust? Proposal: one ETL reviewer plus one Rust-literate pair for `hts.rs` and the decoder in `snv.rs`.<br>• **Two engines to maintain:** until the follow-up story removes the Python path, a change to the SNV rules goes into both engines, and the parity tests fail if one is forgotten. Proposal: accept it for the rollout period and say so in the ETL CLAUDE.md. |
 
