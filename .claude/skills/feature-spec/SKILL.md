@@ -59,7 +59,7 @@ Do not write code. Do not create branches. Do not commit unless the user asks.
 - Remove the template's guidance text (the quotes and the explanation paragraphs under each heading). Keep only your content.
 - **No appendices, no Linked PRs, no extra sections.** Content that the template has no section for usually does not belong in the spec.
 - Section by section:
-  - **Story:** link, reviewer, status, branch (`git` rule).
+  - **Story:** link, reviewer, status, branch (`git` rule), and the story's acceptance criteria, dated: its numbering can change.
   - **Chosen approach:** a one-line **Summary**, then one `### <module>` subsection per module with a bullet list (`- **Label:** …`), no table and no diagram (see `RAD-93-slivar-inheritance.md`). Per module: the approach and the integration point (the existing component it plugs into, by name). No rejected alternatives section.
   - **Modules impacted:** one row per module. The areas (components, not file paths) in one cell, comma-separated.
   - **Tasks:** the template table. One task = one intent = usually one PR. Code, IaC and docs only. Operations (deploy, scripts to run, account setup, QA checks, first load) go in the rollout order. Add a Labels or UX task when the story needs one, or say why not in one line.
