@@ -15,6 +15,8 @@
 
 - **Table:** new `auth_audit_log` in Postgres. One row per changed row: time, transaction id, tenant, table, operation (insert, update, delete, snapshot), row key, actor, request id, old row and new row as jsonb. The jsonb copy keeps working when a table gains a column, unlike the positional copy of the interpretation history.
 - **Capture:** one `AFTER INSERT OR UPDATE OR DELETE` row trigger on `users`, `tenant`, `organization`, `role`, `role_action` and `user_role`. Cascades (deleting a role removes its actions and grants) and direct SQL fire it like any API write. A `BEFORE TRUNCATE` statement trigger on the same six tables writes one delete entry per row about to go. An update that changes no value writes nothing, so re-provisioning an unchanged user (a `create-user` or `update-user` re-run) leaves no trace.
+- **No personal data:** a `users` entry holds only the `user_id`. The trigger drops `email`, `first_name` and `last_name` from its old and new rows, so a name or email change writes nothing. Names and emails are read from `users` when the log is read.
+- **Kept forever:** nothing purges `auth_audit_log`. Only access changes write it (not a login, not an idempotent re-run), about 1 KB per entry, so it stays small; its size is added to the database monitoring.
 - **Append only:** a guard trigger refuses `UPDATE`, `DELETE` and `TRUNCATE` on `auth_audit_log`. It protects against mistakes and manual fixes, not against a malicious database administrator: a table owner can still disable a trigger.
 - **Initial history:** the migration that creates the table and the triggers also writes one snapshot entry per existing row, with the actor `migration`, in the same transaction. No change can fall between the snapshot and the first recorded change.
 - **Later migrations:** every migration that writes one of the six tables (as the action seeds of 000041 and 000042 did) sets `app.actor` to `migration`. Migrations run at API startup with the API's database account, so without it their entries would read `db:<session_user>`, like a manual psql session or a write path that forgot the actor.
@@ -79,7 +81,7 @@ No backfill beyond the snapshot. No feature flag: the History entry only appears
 
 ### portal (frontend)
 
-- **Cypress (RAD-408, RAD-409):** the components are tested end to end only, by new Admin specs on QA: History entry, columns, each filter, pagination, links from Users and Roles, download of the export. The specs write no access change. Other specs and people add entries on QA at any time, so each spec filters on a fixed member or role and asserts on its rows, never on a count or on the first rows.
+- **Cypress (RAD-408, RAD-409):** the components are tested end to end only, by new Admin specs on QA: History entry, columns, each filter, pagination, links from Users and Roles, download of the export. The specs write no access change. A spec that writes an access table (any spec, now or later) writes an idempotent state, such as a grant already held, so a daily run adds no entry. Other specs and people add entries on QA at any time, so each spec filters on a fixed member or role and asserts on its rows, never on a count or on the first rows.
 - **Cypress (RAD-408), rendering:** the snapshot holds only additions, so one spec stubs the access log response with a fixture that holds an addition, a removal, an update and each actor kind, and checks how each one is shown.
 
 ### QA (manual)
@@ -91,7 +93,7 @@ No backfill beyond the snapshot. No feature flag: the History entry only appears
 
 | Risk (from the story) | How it is covered |
 |---|---|
-| Patient or identifying data (names and emails of members and actors) | Tenant filter in every read, `users` and `tenant` entries never returned, two-tenant isolation tests on the search and the export |
+| Patient or identifying data (names and emails of members and actors) | No name or email stored in the log, tenant filter in every read, `users` and `tenant` entries never returned, two-tenant isolation tests on the search and the export |
 | Traceability and audit (no change may escape, log cannot be rewritten) | Row and truncate triggers on every audited table, cascade, direct SQL and truncate tests, guard trigger tests, actor tested on every write path and on every migration. Not covered: a database administrator who disables a trigger |
 | False answer from a wrong grouping or rendering | Grouping by transaction (not by the caller-supplied request id) with its tests, export compared with the search, Cypress rendering spec on every kind of change |
 
@@ -102,7 +104,7 @@ No backfill beyond the snapshot. No feature flag: the History entry only appears
 - Six tables only: no gene panels, no clinical tables, no interpretation history change.
 - No API read of `users` and `tenant` entries, and no cross-tenant view.
 - No sort parameter, no export size limit (open questions).
-- No purge, no erasure of personal data (future account deletion feature).
+- No purge. Deleting an account later leaves only its `user_id` in the log.
 - No service account actor: none writes the access tables today.
 
 ### portal (frontend)
